@@ -36,6 +36,15 @@
     color: var(--ink);
   }
   button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .score-mode-label { display: flex; align-items: center; gap: 8px; font-size: 12px;
+                       font-weight: 600; letter-spacing: .03em; text-transform: uppercase;
+                       color: var(--muted); }
+  .score-mode-label select {
+    font: 600 14px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
+    text-transform: none; letter-spacing: normal; color: var(--ink);
+    padding: 7px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--card);
+  }
+  .score-mode-label select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
   button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
   .wrap { padding: 18px 20px 60px; }
@@ -103,7 +112,14 @@
     <button id="toggle-names" class="on" type="button">Names</button>
     <button id="toggle-answers" class="on" type="button">Answers</button>
     <button id="toggle-correct" class="on" type="button">Right / wrong</button>
-    <button id="toggle-points" type="button">Points</button>
+    <label class="score-mode-label">
+      Score Display
+      <select id="score-mode" aria-label="Score Display">
+        <option value="progress">Progress</option>
+        <option value="percent" selected>Score %</option>
+        <option value="points">Score #</option>
+      </select>
+    </label>
     <button id="state" type="button">Pause</button>
   </div>
 </header>
@@ -132,7 +148,8 @@
     return;
   }
 
-  const show = { names: true, answers: true, correct: true, points: false };
+  const show = { names: true, answers: true, correct: true };
+  let scoreMode = "percent";   // "progress" | "percent" | "points" -- mutually exclusive
   let board = null;
 
   // --- polling -------------------------------------------------------------
@@ -211,12 +228,16 @@
     corner.textContent = "Student";
     hrow.append(corner);
 
+    const SCORE_HEADERS = {
+      progress: ["Progress", "How much of the test they have gotten through"],
+      percent:  ["Correct", "Accuracy on the questions answered so far"],
+      points:   ["Points", "Points earned so far, out of the whole test's total"],
+    };
+    const [scoreLabel, scoreTitle] = SCORE_HEADERS[scoreMode];
     const pct = document.createElement("th");
     pct.className = "pct";
-    pct.textContent = show.points ? "Points" : "Correct";
-    pct.title = show.points
-      ? "Points earned so far, out of the whole test's total"
-      : "Accuracy on the questions answered so far";
+    pct.textContent = scoreLabel;
+    pct.title = scoreTitle;
     hrow.append(pct);
 
     for (const question of board.questions) {
@@ -249,12 +270,18 @@
 
       const score = document.createElement("td");
       score.className = "pct";
-      if (show.points) {
+      if (scoreMode === "points") {
         score.textContent = student.answered
           ? `${fmtPoints(student.pointsEarned)}/${fmtPoints(board.totalPoints)}`
           : "—";
         score.title = `${fmtPoints(student.pointsEarned)} of ${fmtPoints(board.totalPoints)}` +
                        ` points earned so far`;
+      } else if (scoreMode === "progress") {
+        // Distinct from accuracy on purpose: a student stalled on question 3
+        // and one cruising through wrong answers can both show 100% correct
+        // at some point. Progress is the field that tells them apart.
+        score.textContent = `${student.progressPercent}%`;
+        score.title = `${student.answered} of ${board.questions.length} questions answered`;
       } else {
         score.textContent = student.answered ? student.percent + "%" : "—";
         score.title = `${student.correct} correct of ${student.answered} answered`
@@ -295,7 +322,11 @@ ${student.percentOfTest}% of the whole test so far`;
   wireToggle("toggle-names", "names");
   wireToggle("toggle-answers", "answers");
   wireToggle("toggle-correct", "correct");
-  wireToggle("toggle-points", "points");
+
+  $("score-mode").addEventListener("change", () => {
+    scoreMode = $("score-mode").value;
+    render();
+  });
 
   $("state").addEventListener("click", async () => {
     const next = board?.session.state === "open" ? "paused" : "open";

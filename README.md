@@ -148,11 +148,18 @@ thirty students who picked the same wrong answer all show the same letter.
 A question the class is failing in real time gets its column highlighted, which
 is worth knowing before the period ends rather than at marking.
 
-`Names`, `Answers`, `Right / wrong` and `Points` toggle independently, so the
-board can be projected without giving away the key. `Points` swaps the score
-column from percent (accuracy on what is answered so far) to a running points
-total against the whole test -- useful the moment any question is worth more
-than one point. **The board link contains the answer key
+`Names`, `Answers` and `Right / wrong` toggle independently, so the board can
+be projected without giving away the key. **Score Display** picks what the
+score column shows -- three views of a student's test that can genuinely
+disagree with each other:
+
+  * **Progress** -- how much of the test they have gotten through, right or
+    wrong. A student stalled on question 3 and one cruising through wrong
+    answers can both show 100% correct at some point; progress is the field
+    that tells them apart.
+  * **Score %** -- accuracy on what they have answered so far.
+  * **Score #** -- a running points total against the whole test, e.g. 18/25.
+    Useful the moment any question is worth more than one point. **The board link contains the answer key
 — keep it to yourself.** The room name will not open it.
 
 ---

@@ -484,6 +484,28 @@ if (!dashboardToken) {
   check("each student's pointsEarned matches recomputing from their answers",
     pointsMismatch === 0, `${pointsMismatch} student(s) disagreed`);
 
+  // Progress and accuracy must be able to disagree -- that is the whole point
+  // of having both. A student who has answered every question wrong shows
+  // 100% progress and 0% correct; if the two fields ever moved in lockstep,
+  // progress would just be a relabelled copy of percent rather than telling
+  // teachers something percent cannot.
+  let progressMismatch = 0;
+  for (const student of board.students) {
+    const expected = board.questions.length
+      ? Math.round((student.answered / board.questions.length) * 100)
+      : 0;
+    if (student.progressPercent !== expected) progressMismatch++;
+  }
+  check("progressPercent matches answered / total questions",
+    progressMismatch === 0, `${progressMismatch} student(s) disagreed`);
+
+  const allWrong = board.students.find((s) => s.answered > 0 && s.correct === 0);
+  if (allWrong) {
+    check("progress and accuracy are independent (a wrong answer still counts as progress)",
+      allWrong.progressPercent > 0 && allWrong.percent === 0,
+      `progress=${allWrong.progressPercent}% percent=${allWrong.percent}%`);
+  }
+
   // The room name is known to the whole class; it must not open the board.
   check("the room name does NOT open the board",
     (await fetch(`${BASE}/api/live/${ROOM}`)).status === 404);

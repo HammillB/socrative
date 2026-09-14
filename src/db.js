@@ -636,6 +636,14 @@ export async function getLiveBoard(sql, dashboardToken) {
       // it is just a running sum, so it is shown against the FULL total
       // rather than only the questions answered so far.
       pointsEarned: mine.reduce((sum, r) => sum + (r.points_earned ?? 0), 0),
+      // How much of the test they have gotten through, independent of
+      // whether their answers were right. A student stalled on question 3
+      // and a student cruising through wrong answers both show 100% on the
+      // Correct column at some point; progress is the field that tells them
+      // apart.
+      progressPercent: questions.length
+        ? Math.round((mine.length / questions.length) * 100)
+        : 0,
     };
   });
 
