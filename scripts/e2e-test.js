@@ -461,6 +461,29 @@ if (!dashboardToken) {
   const me = board.students.find((s) => s.number === "100001");
   check("the finished student shows as handed in", me?.status === "submitted");
 
+  // Points are the same underlying data as percent, just unnormalised, and it
+  // is easy for the two to quietly disagree. Check pointsEarned against an
+  // independent recomputation from is_correct + each question's own points.
+  check("the board reports a total point value for the test",
+    typeof board.totalPoints === "number" && board.totalPoints > 0,
+    `totalPoints=${board.totalPoints}`);
+
+  const pointsOf = new Map(board.questions.map((q) => [q.id, q.points ?? 1]));
+  const recomputedTotal = board.questions.reduce((sum, q) => sum + (q.points ?? 1), 0);
+  check("totalPoints matches summing every question's own points",
+    board.totalPoints === recomputedTotal,
+    `board says ${board.totalPoints}, summed ${recomputedTotal}`);
+
+  let pointsMismatch = 0;
+  for (const student of board.students) {
+    const earned = Object.entries(student.answers)
+      .filter(([, a]) => a.correct)
+      .reduce((sum, [qid]) => sum + (pointsOf.get(Number(qid)) ?? 1), 0);
+    if (Math.abs(earned - student.pointsEarned) > 0.001) pointsMismatch++;
+  }
+  check("each student's pointsEarned matches recomputing from their answers",
+    pointsMismatch === 0, `${pointsMismatch} student(s) disagreed`);
+
   // The room name is known to the whole class; it must not open the board.
   check("the room name does NOT open the board",
     (await fetch(`${BASE}/api/live/${ROOM}`)).status === 404);

@@ -148,8 +148,11 @@ thirty students who picked the same wrong answer all show the same letter.
 A question the class is failing in real time gets its column highlighted, which
 is worth knowing before the period ends rather than at marking.
 
-`Names`, `Answers` and `Right / wrong` toggle independently, so the board can be
-projected without giving away the key. **The board link contains the answer key
+`Names`, `Answers`, `Right / wrong` and `Points` toggle independently, so the
+board can be projected without giving away the key. `Points` swaps the score
+column from percent (accuracy on what is answered so far) to a running points
+total against the whole test -- useful the moment any question is worth more
+than one point. **The board link contains the answer key
 — keep it to yourself.** The room name will not open it.
 
 ---

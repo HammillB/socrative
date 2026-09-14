@@ -523,13 +523,15 @@ export async function getLiveBoard(sql, dashboardToken) {
 
   // Questions in the order they were written, not the order anyone saw them.
   const questions = await sql.all(
-    `SELECT ai.position, q.id, q.stem
+    `SELECT ai.position, q.id, q.stem,
+            COALESCE(ai.points, q.points) AS points
        FROM assessment_items ai
        JOIN questions q ON q.id = ai.question_id
       WHERE ai.assessment_id = ?
       ORDER BY ai.position`,
     [session.assessment_id]
   );
+  const totalPoints = questions.reduce((sum, q) => sum + q.points, 0);
 
   // choice id -> its canonical letter, and each question's correct letter
   const letterOf = new Map();
@@ -573,7 +575,8 @@ export async function getLiveBoard(sql, dashboardToken) {
 
   const responses = attempts.length
     ? await sql.all(
-        `SELECT r.attempt_id, r.question_id, r.choice_id, r.is_correct, r.answered_at
+        `SELECT r.attempt_id, r.question_id, r.choice_id, r.is_correct,
+                r.points_earned, r.answered_at
            FROM responses r
            JOIN attempts a ON a.id = r.attempt_id
           WHERE a.session_id = ?
@@ -628,6 +631,11 @@ export async function getLiveBoard(sql, dashboardToken) {
       percentOfTest: questions.length
         ? Math.round((mine.filter((r) => r.is_correct).length / questions.length) * 100)
         : 0,
+      // Points earned so far, against the whole test's total -- the points
+      // equivalent of percentOfTest. Unlike percent this needs no scaling:
+      // it is just a running sum, so it is shown against the FULL total
+      // rather than only the questions answered so far.
+      pointsEarned: mine.reduce((sum, r) => sum + (r.points_earned ?? 0), 0),
     };
   });
 
@@ -651,6 +659,7 @@ export async function getLiveBoard(sql, dashboardToken) {
     },
     questions,
     students,
+    totalPoints,
     summary: {
       joined: students.filter((s) => s.status !== "not_started").length,
       submitted: students.filter((s) => s.status === "submitted").length,

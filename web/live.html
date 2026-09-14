@@ -103,6 +103,7 @@
     <button id="toggle-names" class="on" type="button">Names</button>
     <button id="toggle-answers" class="on" type="button">Answers</button>
     <button id="toggle-correct" class="on" type="button">Right / wrong</button>
+    <button id="toggle-points" type="button">Points</button>
     <button id="state" type="button">Pause</button>
   </div>
 </header>
@@ -131,7 +132,7 @@
     return;
   }
 
-  const show = { names: true, answers: true, correct: true };
+  const show = { names: true, answers: true, correct: true, points: false };
   let board = null;
 
   // --- polling -------------------------------------------------------------
@@ -149,6 +150,11 @@
     } catch (err) {
       $("stamp").textContent = "not updating — " + err.message;
     }
+  }
+
+  /** 14, not 14.0; 14.5 stays 14.5. Points can be fractional; scores rarely are. */
+  function fmtPoints(n) {
+    return Math.round(n * 10) / 10;
   }
 
   // --- rendering -----------------------------------------------------------
@@ -207,8 +213,10 @@
 
     const pct = document.createElement("th");
     pct.className = "pct";
-    pct.textContent = "Correct";
-    pct.title = "Accuracy on the questions answered so far";
+    pct.textContent = show.points ? "Points" : "Correct";
+    pct.title = show.points
+      ? "Points earned so far, out of the whole test's total"
+      : "Accuracy on the questions answered so far";
     hrow.append(pct);
 
     for (const question of board.questions) {
@@ -241,10 +249,18 @@
 
       const score = document.createElement("td");
       score.className = "pct";
-      score.textContent = student.answered ? student.percent + "%" : "—";
-      score.title = `${student.correct} correct of ${student.answered} answered`
-                  + `
+      if (show.points) {
+        score.textContent = student.answered
+          ? `${fmtPoints(student.pointsEarned)}/${fmtPoints(board.totalPoints)}`
+          : "—";
+        score.title = `${fmtPoints(student.pointsEarned)} of ${fmtPoints(board.totalPoints)}` +
+                       ` points earned so far`;
+      } else {
+        score.textContent = student.answered ? student.percent + "%" : "—";
+        score.title = `${student.correct} correct of ${student.answered} answered`
+                    + `
 ${student.percentOfTest}% of the whole test so far`;
+      }
       tr.append(score);
 
       for (const question of board.questions) tr.append(cellFor(student, question));
@@ -279,6 +295,7 @@ ${student.percentOfTest}% of the whole test so far`;
   wireToggle("toggle-names", "names");
   wireToggle("toggle-answers", "answers");
   wireToggle("toggle-correct", "correct");
+  wireToggle("toggle-points", "points");
 
   $("state").addEventListener("click", async () => {
     const next = board?.session.state === "open" ? "paused" : "open";
