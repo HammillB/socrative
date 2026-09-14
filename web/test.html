@@ -34,17 +34,18 @@
   }
   #code { text-transform: uppercase; letter-spacing: 0.1em; }
   button {
-    font: inherit; font-size: 18px; font-weight: 600; cursor: pointer;
-    border-radius: 7px; border: 1px solid transparent; padding: 14px 26px;
+    font: inherit; font-size: 17px; font-weight: 600; cursor: pointer;
+    border-radius: 7px; border: 1px solid transparent; padding: 13px 24px;
     background: var(--accent); color: #fff;
   }
-  button:disabled { opacity: .45; cursor: default; }
-  .join button { width: 100%; margin-top: 22px; }
+  button.quiet { background: var(--card); color: var(--ink); border-color: var(--line); }
+  button:disabled { opacity: .4; cursor: default; }
+  .join button { width: 100%; margin-top: 22px; font-size: 18px; }
   .error { color: var(--bad); font-weight: 600; margin-top: 14px; }
 
   /* ---- progress ---- */
   .meta { display: flex; justify-content: space-between; align-items: baseline;
-          margin-bottom: 10px; }
+          margin-bottom: 10px; gap: 12px; }
   .counter { font-weight: 700; font-size: 15px; letter-spacing: .02em; }
   .title { color: var(--muted); font-size: 15px; }
   .track { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden;
@@ -69,13 +70,6 @@
   .choice-letter { font-weight: 700; color: var(--muted); flex: none; min-width: 1.2em; }
   .choice img { max-width: 100%; border-radius: 6px; margin-top: 8px; display: block; }
 
-  .actions { margin-top: 26px; display: flex; gap: 16px; align-items: center;
-             flex-wrap: wrap; }
-  .final-note { color: var(--muted); font-size: 14.5px; }
-
-  .offline { background: var(--warn-bg); color: var(--warn-ink); font-weight: 600;
-             padding: 10px 18px; text-align: center; font-size: 15px; }
-
   .choice.graded { cursor: default; }
   .choice.graded:hover { border-color: var(--line); }
   .choice.is-correct { background: var(--right-bg); border-color: var(--right); }
@@ -85,12 +79,26 @@
   .choice.is-correct .tag { color: var(--right); }
   .choice.is-wrong .tag   { color: var(--bad); }
 
+  .actions { margin-top: 26px; display: flex; gap: 12px; align-items: center;
+             flex-wrap: wrap; }
+  .actions .spacer { flex: 1 1 auto; }
+  .final-note { color: var(--muted); font-size: 14.5px; }
+
+  .offline { background: var(--warn-bg); color: var(--warn-ink); font-weight: 600;
+             padding: 10px 18px; text-align: center; font-size: 15px; }
+
   .feedback { margin-top: 20px; padding: 16px 20px; border-radius: 8px; font-size: 16.5px;
               line-height: 1.5; }
   .feedback.yes { background: var(--right-bg); color: var(--right); }
   .feedback.no  { background: #f7e2d7; color: var(--bad); }
   .feedback .verdict { display: block; font-weight: 700; font-size: 18px; margin-bottom: 4px; }
   .feedback .why { display: block; margin-top: 8px; color: var(--ink); }
+
+  /* ---- unanswered prompt ---- */
+  .prompt { margin-top: 20px; padding: 16px 20px; border-radius: 8px;
+            background: var(--warn-bg); color: var(--warn-ink); font-size: 16.5px; }
+  .prompt strong { display: block; margin-bottom: 4px; font-size: 17px; }
+  .prompt button { margin-top: 12px; font-size: 16px; padding: 10px 18px; }
 
   .done { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
           padding: 46px 26px; text-align: center; margin-top: 50px; }
@@ -101,8 +109,7 @@
 <body>
 
 <div id="offline" class="offline" hidden>
-  No connection. Your answer has not been sent yet — stay on this page, it will
-  keep trying.
+  No connection. Your work is saved on this device and will upload when it returns.
 </div>
 
 <div class="wrap">
@@ -121,7 +128,7 @@
     <p id="join-error" class="error" hidden></p>
   </form>
 
-  <!-- one question ----------------------------------------------------- -->
+  <!-- one question at a time ------------------------------------------- -->
   <main id="test" hidden>
     <div class="meta">
       <span class="counter" id="counter"></span>
@@ -134,10 +141,10 @@
       <div id="stem-media"></div>
       <div id="choices"></div>
       <div class="feedback" id="feedback" hidden></div>
-      <div class="actions">
-        <button id="submit" type="button" disabled>Submit answer</button>
-        <span class="final-note">This answer is final — you cannot come back to it.</span>
-      </div>
+
+      <div class="actions" id="actions"></div>
+
+      <div class="prompt" id="prompt" hidden></div>
       <p id="q-error" class="error" hidden></p>
     </section>
   </main>
@@ -145,7 +152,7 @@
   <!-- finished --------------------------------------------------------- -->
   <section id="done" class="done" hidden>
     <h1>All done</h1>
-    <p class="sub">You have answered every question. You can close this page.</p>
+    <p class="sub">Your test has been handed in. You can close this page.</p>
     <div id="score-block" hidden>
       <div class="score" id="score"></div>
       <p class="sub" id="score-detail"></p>
@@ -161,10 +168,29 @@
   const STORE = "classroom-test-token";
   const LETTERS = "ABCDEFGH";
 
-  let state = null;      // { token, title, total, number, question, finished }
-  let picked = null;     // choice id selected but not yet submitted
+  let state = null;       // whatever the server last told us
+  let index = 0;          // open mode: which question is on screen
+  let picked = null;      // sequential mode: chosen but not yet submitted
+  let pendingNext = null; // sequential mode: next question, held behind feedback
   let sending = false;
-  let pendingNext = null; // next question, held while feedback is on screen
+  let queue = [];         // open mode: answers not yet accepted by the server
+
+  const isOpen = () => state?.delivery === "open";
+
+  /**
+   * Name the unanswered questions without listing twenty of them. A student
+   * who missed two wants to know which two; one who has barely started wants
+   * a count and somewhere to go.
+   */
+  function describeUnanswered(numbers) {
+    if (numbers.length === 1) return `You still need to answer question ${numbers[0]}.`;
+    if (numbers.length <= 6) {
+      return `You still need to answer questions ${numbers.slice(0, -1).join(", ")}` +
+             ` and ${numbers[numbers.length - 1]}.`;
+    }
+    return `You still have ${numbers.length} questions to answer.` +
+           ` The first is question ${numbers[0]}.`;
+  }
 
   // --- network -------------------------------------------------------------
 
@@ -175,41 +201,63 @@
       body: JSON.stringify(body),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) { const e = new Error(data.error || "Something went wrong."); e.status = res.status; throw e; }
+    if (!res.ok) { const e = new Error(data.error || "Something went wrong."); e.status = res.status; e.data = data; throw e; }
     return data;
   }
 
   const setOffline = (yes) => { $("offline").hidden = !yes; };
 
+  function saveLocal() {
+    try {
+      localStorage.setItem(STORE, JSON.stringify({
+        token: state.token, answers: state?.answers ?? null, queue, index,
+      }));
+    } catch { /* private mode or full disk: the server still has it */ }
+  }
+
+  /**
+   * Open mode only: push queued answers, oldest first.
+   *
+   * Because the whole paper is already in the browser, a student can keep
+   * working through a dropout and everything syncs when the network returns.
+   */
+  async function flush() {
+    if (!queue.length || sending) return;
+    sending = true;
+    try {
+      while (queue.length) {
+        await post("/api/answer", { token: state.token, ...queue[0] });
+        queue.shift();
+        saveLocal();
+      }
+      setOffline(false);
+    } catch {
+      setOffline(true);
+    } finally {
+      sending = false;
+    }
+  }
+  setInterval(() => { if (isOpen()) flush(); }, 4000);
+  window.addEventListener("online", () => { if (isOpen()) flush(); });
+  window.addEventListener("offline", () => { if (isOpen()) setOffline(true); });
+
   // --- rendering -----------------------------------------------------------
 
-  function showQuestion() {
-    picked = null;
-    pendingNext = null;
-    $("submit").disabled = true;
-    $("submit").textContent = "Submit answer";
-    $("q-error").hidden = true;
-    $("feedback").hidden = true;
-    document.querySelector(".final-note").hidden = false;
+  function makeButton(text, { quiet = false, disabled = false, onClick } = {}) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = text;
+    if (quiet) b.className = "quiet";
+    b.disabled = disabled;
+    if (onClick) b.addEventListener("click", onClick);
+    return b;
+  }
 
-    $("title").textContent = state.title;
-    $("counter").textContent = `Question ${state.number} of ${state.total}`;
-    $("fill").style.width = ((state.number - 1) / state.total * 100) + "%";
-
-    const question = state.question;
-    $("stem").textContent = question.stem;
-
-    const media = $("stem-media");
-    media.textContent = "";
-    if (question.media) {
-      const img = document.createElement("img");
-      img.src = question.media; img.alt = "";
-      media.append(img);
-    }
-
+  function renderChoices(question, selectedId, { locked = false } = {}) {
     const host = $("choices");
     host.textContent = "";
-    question.choices.forEach((choice, index) => {
+
+    question.choices.forEach((choice, i) => {
       const label = document.createElement("label");
       label.className = "choice";
 
@@ -217,21 +265,18 @@
       radio.type = "radio";
       radio.name = "answer";
       radio.value = choice.id;
+      radio.checked = String(selectedId) === String(choice.id);
+      radio.disabled = locked;
+      if (radio.checked) label.classList.add("picked");
 
       const letter = document.createElement("span");
       letter.className = "choice-letter";
-      letter.textContent = LETTERS[index];
+      letter.textContent = LETTERS[i];
 
       const text = document.createElement("span");
       text.textContent = choice.text;
 
-      radio.addEventListener("change", () => {
-        picked = choice.id;
-        $("submit").disabled = false;
-        for (const el of document.querySelectorAll(".choice")) {
-          el.classList.toggle("picked", el.querySelector("input").checked);
-        }
-      });
+      radio.addEventListener("change", () => onPick(question, choice.id));
 
       label.append(radio, letter, text);
       if (choice.media) {
@@ -241,16 +286,175 @@
       }
       host.append(label);
     });
+  }
+
+  function renderStem(question) {
+    $("stem").textContent = question.stem;
+    const media = $("stem-media");
+    media.textContent = "";
+    if (question.media) {
+      const img = document.createElement("img");
+      img.src = question.media; img.alt = "";
+      media.append(img);
+    }
+  }
+
+  // --- open navigation -----------------------------------------------------
+
+  function renderOpen() {
+    const question = state.paper[index];
+    const answeredCount = Object.keys(state.answers).length;
+
+    $("title").textContent = state.title;
+    $("counter").textContent = `Question ${index + 1} of ${state.total}`;
+    $("fill").style.width = (answeredCount / state.total * 100) + "%";
+    $("feedback").hidden = true;
+    $("q-error").hidden = true;
+
+    renderStem(question);
+    renderChoices(question, state.answers[question.id]);
+
+    const actions = $("actions");
+    actions.textContent = "";
+    actions.append(
+      makeButton("Back", {
+        quiet: true, disabled: index === 0,
+        onClick: () => { index--; saveLocal(); renderOpen(); },
+      }),
+      makeButton("Next", {
+        quiet: true, disabled: index >= state.total - 1,
+        onClick: () => { index++; saveLocal(); renderOpen(); },
+      }),
+    );
+
+    const spacer = document.createElement("span");
+    spacer.className = "spacer";
+    actions.append(spacer);
+
+    const note = document.createElement("span");
+    note.className = "final-note";
+    note.textContent = `${answeredCount} of ${state.total} answered`;
+    actions.append(note, makeButton("Hand in", { onClick: handIn }));
 
     window.scrollTo({ top: 0, behavior: "instant" });
   }
 
-  /**
-   * Freeze the question and show how it went.
-   *
-   * The next question has already arrived but is held back until the student
-   * chooses to move on, so the result does not flash past on the way.
-   */
+  /** Blank questions block handing in, and the prompt says which and where. */
+  function showUnanswered(message, unanswered) {
+    const box = $("prompt");
+    box.textContent = "";
+    box.hidden = false;
+
+    const head = document.createElement("strong");
+    head.textContent = "Not finished yet";
+    box.append(head, document.createTextNode(message));
+
+    if (unanswered?.length) {
+      box.append(makeButton(`Go to question ${unanswered[0]}`, {
+        onClick: () => {
+          index = unanswered[0] - 1;
+          box.hidden = true;
+          saveLocal();
+          renderOpen();
+        },
+      }));
+    }
+    box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  async function handIn() {
+    $("prompt").hidden = true;
+
+    // Check here first so a student with a dropped connection still gets a
+    // useful answer instead of a network error.
+    const missing = state.paper
+      .map((q, i) => (state.answers[q.id] == null ? i + 1 : null))
+      .filter((n) => n !== null);
+
+    if (missing.length) {
+      showUnanswered(describeUnanswered(missing), missing);
+      return;
+    }
+
+    await flush();
+    if (queue.length) {
+      $("q-error").textContent =
+        "Some answers have not uploaded yet. Wait for the warning to clear, then try again.";
+      $("q-error").hidden = false;
+      return;
+    }
+
+    try {
+      const data = await post("/api/submit", { token: state.token });
+      clearLocal();
+      showDone(data.score);
+    } catch (err) {
+      if (err.status === 409 && err.data?.unanswered) {
+        showUnanswered(err.message, err.data.unanswered);
+      } else {
+        $("q-error").textContent = err.message;
+        $("q-error").hidden = false;
+      }
+    }
+  }
+
+  function onPick(question, choiceId) {
+    if (isOpen()) {
+      state.answers[question.id] = choiceId;
+      queue = queue.filter((q) => q.questionId !== question.id);
+      queue.push({ questionId: question.id, choiceId });
+      saveLocal();
+      $("prompt").hidden = true;
+      renderOpen();
+      flush();
+    } else {
+      picked = choiceId;
+      $("submit-btn").disabled = false;
+      for (const el of document.querySelectorAll(".choice")) {
+        el.classList.toggle("picked", el.querySelector("input").checked);
+      }
+    }
+  }
+
+  // --- sequential ----------------------------------------------------------
+
+  function renderSequential() {
+    picked = null;
+    pendingNext = null;
+
+    $("title").textContent = state.title;
+    $("counter").textContent = `Question ${state.number} of ${state.total}`;
+    $("fill").style.width = ((state.number - 1) / state.total * 100) + "%";
+    $("feedback").hidden = true;
+    $("prompt").hidden = true;
+    $("q-error").hidden = true;
+
+    renderStem(state.question);
+    renderChoices(state.question, null);
+
+    const actions = $("actions");
+    actions.textContent = "";
+    const submit = makeButton("Submit answer", { disabled: true, onClick: onSequentialButton });
+    submit.id = "submit-btn";
+    const note = document.createElement("span");
+    note.className = "final-note";
+    note.id = "final-note";
+    note.textContent = "This answer is final — you cannot come back to it.";
+    actions.append(submit, note);
+
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }
+
+  function onSequentialButton() {
+    if (pendingNext) {
+      const next = pendingNext;
+      pendingNext = null;
+      apply(next);
+    } else {
+      submitSequential();
+    }
+  }
+
   function showFeedback(feedback, next) {
     pendingNext = next;
 
@@ -261,13 +465,8 @@
       label.classList.remove("picked");
 
       const letter = label.querySelector(".choice-letter").textContent;
-      const chosen = radio.checked;
-
-      if (feedback.correct && chosen) {
-        label.classList.add("is-correct");
-        label.append(tag("Your answer"));
-      } else if (!feedback.correct && chosen) {
-        label.classList.add("is-wrong");
+      if (radio.checked) {
+        label.classList.add(feedback.correct ? "is-correct" : "is-wrong");
         label.append(tag("Your answer"));
       } else if (!feedback.correct && letter === feedback.correctLetter) {
         label.classList.add("is-correct");
@@ -297,10 +496,10 @@
       box.append(why);
     }
 
-    const button = $("submit");
+    const button = $("submit-btn");
     button.disabled = false;
     button.textContent = next.finished ? "Finish" : "Next question";
-    document.querySelector(".final-note").hidden = true;
+    $("final-note").hidden = true;
     box.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
@@ -310,6 +509,53 @@
     span.textContent = text;
     return span;
   }
+
+  /**
+   * The answer is not recorded until the server has it, and the next question
+   * only arrives in that same reply. A failed send must therefore not advance
+   * anything: the student stays put with their choice still selected. If the
+   * device dies here the question is simply unanswered, and they get it again.
+   */
+  async function submitSequential() {
+    if (picked == null || sending) return;
+    sending = true;
+    const button = $("submit-btn");
+    button.disabled = true;
+    button.textContent = "Sending…";
+    $("q-error").hidden = true;
+
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        const data = await post("/api/answer", {
+          token: state.token, questionId: state.question.id, choiceId: picked,
+        });
+        setOffline(false);
+        sending = false;
+        if (data.feedback) showFeedback(data.feedback, data);
+        else apply(data);
+        return;
+      } catch (err) {
+        if (err.status && err.status < 500) {
+          sending = false;
+          $("q-error").textContent = err.message;
+          $("q-error").hidden = false;
+          button.disabled = false;
+          button.textContent = "Submit answer";
+          return;
+        }
+        setOffline(true);
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+      }
+    }
+
+    sending = false;
+    button.disabled = false;
+    button.textContent = "Try again";
+    $("q-error").textContent = "Could not reach the server. Your answer has not been saved yet.";
+    $("q-error").hidden = false;
+  }
+
+  // --- flow ----------------------------------------------------------------
 
   function showDone(score) {
     $("test").hidden = true;
@@ -321,74 +567,27 @@
     }
   }
 
+  function clearLocal() {
+    try { localStorage.removeItem(STORE); } catch {}
+  }
+
   function apply(data) {
     state = data;
-    try { localStorage.setItem(STORE, data.token); } catch {}
     $("join").hidden = true;
-    if (data.finished) showDone(data.score);
-    else { $("test").hidden = false; showQuestion(); }
-  }
 
-  // --- submitting ----------------------------------------------------------
-  //
-  // The answer is not recorded until the server has it, and the next question
-  // only arrives in that same reply. So a failed send must not advance
-  // anything: we keep the student on this question, with their choice still
-  // selected, and keep trying. If the device dies here the question is simply
-  // unanswered, and they get it again when they log back in.
+    if (data.finished) { clearLocal(); showDone(data.score); return; }
 
-  async function submitAnswer() {
-    if (picked == null || sending) return;
-    sending = true;
-    $("submit").disabled = true;
-    $("submit").textContent = "Sending…";
-    $("q-error").hidden = true;
-
-    for (let attempt = 0; attempt < 4; attempt++) {
-      try {
-        const data = await post("/api/answer", {
-          token: state.token,
-          questionId: state.question.id,
-          choiceId: picked,
-        });
-        setOffline(false);
-        sending = false;
-        if (data.feedback) showFeedback(data.feedback, data);
-        else apply(data);
-        return;
-      } catch (err) {
-        if (err.status && err.status < 500) {          // a refusal, not a dropout
-          sending = false;
-          $("q-error").textContent = err.message;
-          $("q-error").hidden = false;
-          $("submit").disabled = false;
-          $("submit").textContent = "Submit answer";
-          return;
-        }
-        setOffline(true);
-        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
-      }
-    }
-
-    sending = false;
-    $("submit").disabled = false;
-    $("submit").textContent = "Try again";
-    $("q-error").textContent = "Could not reach the server. Your answer has not been saved yet.";
-    $("q-error").hidden = false;
-  }
-
-  // The same button submits the answer, then moves on once the result is up.
-  $("submit").addEventListener("click", () => {
-    if (pendingNext) {
-      const next = pendingNext;
-      pendingNext = null;
-      apply(next);
+    $("test").hidden = false;
+    if (isOpen()) {
+      state.answers = state.answers ?? {};
+      index = Math.min(Math.max(index, 0), state.total - 1);
+      saveLocal();
+      renderOpen();
     } else {
-      submitAnswer();
+      try { localStorage.setItem(STORE, JSON.stringify({ token: data.token })); } catch {}
+      renderSequential();
     }
-  });
-
-  // --- joining and resuming ------------------------------------------------
+  }
 
   $("join").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -398,6 +597,8 @@
     button.disabled = true;
     button.textContent = "Starting…";
     try {
+      index = 0;
+      queue = [];
       apply(await post("/api/join", {
         code: $("code").value.trim().toUpperCase(),
         studentNumber: $("student").value.trim(),
@@ -423,16 +624,24 @@
     }
   });
 
-  // A reload, or a new device, resumes on the question the server says they
-  // reached. Nothing about the position is trusted to the browser.
+  // A reload, or a new device, resumes from the server. Anything still queued
+  // on this device is replayed on top.
   (async () => {
-    let token = null;
-    try { token = localStorage.getItem(STORE); } catch {}
-    if (!token) return;
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(STORE) || "null"); } catch {}
+    if (!saved?.token) return;
     try {
-      apply(await post("/api/resume", { token }));
+      const fresh = await post("/api/resume", { token: saved.token });
+      queue = saved.queue ?? [];
+      index = saved.index ?? 0;
+      apply(fresh);
+      if (isOpen()) {
+        for (const q of queue) state.answers[q.questionId] = q.choiceId;
+        renderOpen();
+        flush();
+      }
     } catch {
-      try { localStorage.removeItem(STORE); } catch {}   // finished, closed, or stale
+      clearLocal();   // finished, closed, or stale
     }
   })();
 })();

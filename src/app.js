@@ -66,6 +66,22 @@ export function buildPaper(questions, seed, settings) {
   }));
 }
 
+/**
+ * Name the unanswered questions without listing twenty of them.
+ *
+ * A student who missed two wants to know which two. A student who has barely
+ * started wants a count and somewhere to go, not a wall of numbers.
+ */
+function describeUnanswered(numbers) {
+  if (numbers.length === 1) return `You still need to answer question ${numbers[0]}.`;
+  if (numbers.length <= 6) {
+    return `You still need to answer questions ${numbers.slice(0, -1).join(", ")}` +
+           ` and ${numbers[numbers.length - 1]}.`;
+  }
+  return `You still have ${numbers.length} questions to answer.` +
+         ` The first is question ${numbers[0]}.`;
+}
+
 function randomToken() {
   const bytes = new Uint8Array(24);
   crypto.getRandomValues(bytes);
@@ -105,39 +121,75 @@ export function createApp({ getDriver, staticHandler }) {
   }
 
   /**
-   * Where this student currently stands.
+   * The two delivery modes differ in more than presentation, so the rules
+   * live here rather than in the page:
    *
-   * Only ONE question is ever returned. In a locked sequential test the whole
-   * paper must not be in the browser: a student who can read the payload can
-   * read ahead, and the point of the mode is that they cannot.
+   *   sequential  one question, answered once, no way back. Only the current
+   *               question is sent, because a student who can read the
+   *               payload could otherwise read ahead.
    *
-   * The current index is simply how many questions they have answered, so
-   * there is no cursor to drift out of step with the answers themselves.
+   *   open        the student moves freely with Back and Next, changes
+   *               answers, and hands in at the end once nothing is blank.
+   *               Here the whole paper may go to the browser -- they are
+   *               allowed to see every question anyway -- which buys back the
+   *               offline tolerance the locked mode cannot have.
+   *
+   * Either way the answer key stays on the server.
    */
-  async function stateFor(sql, { attempt, assessmentId, settingsJson, title }) {
-    const settings = JSON.parse(settingsJson || "{}");
-    const ordered = buildPaper(
+  const deliveryOf = (settingsJson) =>
+    JSON.parse(settingsJson || "{}").delivery === "open" ? "open" : "sequential";
+
+  const forStudent = (question) => ({
+    id: question.id,
+    stem: question.stem,
+    media: question.media,
+    points: question.points,
+    choices: question.choices,     // no isCorrect: see getAssessmentQuestions
+  });
+
+  async function orderedPaper(sql, assessmentId, attempt, settings) {
+    return buildPaper(
       await db.getAssessmentQuestions(sql, assessmentId),
       attempt.seed,
       settings
     );
-    const answered = await db.countResponses(sql, attempt.id);
-    const current = ordered[answered] ?? null;
+  }
 
-    return {
+  /**
+   * Where this student currently stands.
+   *
+   * In sequential mode the position is simply how many questions they have
+   * answered, so there is no cursor to drift out of step with the answers.
+   */
+  async function stateFor(sql, { attempt, assessmentId, settingsJson, title }) {
+    const settings = JSON.parse(settingsJson || "{}");
+    const delivery = deliveryOf(settingsJson);
+    const ordered = await orderedPaper(sql, assessmentId, attempt, settings);
+    const responses = await db.getResponses(sql, attempt.id);
+
+    const common = {
       token: attempt.token,
       title,
+      delivery,
       total: ordered.length,
-      number: answered + 1,          // what the student sees: "Question 7 of 25"
-      answered,
-      finished: answered >= ordered.length,
-      question: current && {
-        id: current.id,
-        stem: current.stem,
-        media: current.media,
-        points: current.points,
-        choices: current.choices,    // no isCorrect: see getAssessmentQuestions
-      },
+      answered: responses.length,
+    };
+
+    if (delivery === "open") {
+      return {
+        ...common,
+        finished: attempt.status === "submitted",
+        paper: ordered.map(forStudent),
+        answers: Object.fromEntries(responses.map((r) => [r.question_id, r.choice_id])),
+      };
+    }
+
+    const current = ordered[responses.length] ?? null;
+    return {
+      ...common,
+      number: responses.length + 1,     // what the student sees: "Question 7 of 25"
+      finished: responses.length >= ordered.length,
+      question: current && forStudent(current),
     };
   }
 
@@ -153,9 +205,8 @@ export function createApp({ getDriver, staticHandler }) {
    * Pick up an attempt already in progress.
    *
    * This is what a dead Chromebook comes back to, and what a reload hits. The
-   * position is held by the server, so the student resumes on the question
-   * they had reached -- on any machine, with nothing carried over from the old
-   * one.
+   * position is held by the server, so the student resumes where they had
+   * reached -- on any machine, with nothing carried over from the old one.
    */
   app.post("/api/resume", async (c) => {
     const body = await c.req.json().catch(() => ({}));
@@ -210,6 +261,119 @@ export function createApp({ getDriver, staticHandler }) {
   });
 
   /**
+   * Record an answer.
+   *
+   * Sequential: it must be the question they are on, and it is final.
+   * Open: any question on the paper, and changeable until they hand in.
+   */
+  app.post("/api/answer", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const { attempt, error } = await requireAttempt(c, body);
+    if (error) return error;
+
+    const sql = c.get("sql");
+    const settings = JSON.parse(attempt.settings || "{}");
+
+    if (deliveryOf(attempt.settings) === "open") {
+      try {
+        await db.saveResponse(sql, attempt, {
+          questionId: body.questionId,
+          choiceId: body.choiceId,
+          msSpent: body.msSpent ?? null,
+          final: false,
+        });
+      } catch (err) {
+        return fail(c, err.message);
+      }
+      // No right/wrong here. A student who could see it would simply change
+      // their answer, which is not a test.
+      return c.json({
+        saved: true,
+        answered: await db.countResponses(sql, attempt.id),
+      });
+    }
+
+    const before = await stateFor(sql, contextOf(attempt));
+    if (before.finished) return fail(c, "You have answered every question.", 409);
+    if (!body.questionId || body.questionId !== before.question.id) {
+      return fail(c, "That is not the question you are on.", 409);
+    }
+
+    let graded;
+    try {
+      graded = await db.saveResponse(sql, attempt, {
+        questionId: body.questionId,
+        choiceId: body.choiceId,
+        msSpent: body.msSpent ?? null,
+        final: true,
+      });
+    } catch (err) {
+      return fail(c, err.message);
+    }
+
+    const after = await stateFor(sql, contextOf(attempt));
+
+    // Answering the last question finishes a sequential test. There is no
+    // hand-in step to forget, and no way to leave a paper unsubmitted.
+    let score = null;
+    if (after.finished) {
+      await db.submitAttempt(sql, attempt.id);
+      const totals = await db.scoreAttempt(sql, attempt);
+      score = settings.show_final_score ? { ...totals, showToStudent: true } : null;
+    }
+
+    return c.json({
+      saved: true,
+      ...after,
+      score,
+      feedback: settings.show_question_feedback
+        ? await feedbackFor(sql, before.question, graded.isCorrect)
+        : null,
+    });
+  });
+
+  /**
+   * Hand in an open-navigation test.
+   *
+   * Refused while anything is blank, and the reply names which questions --
+   * by the number the student sees, not the database's -- so the page can
+   * send them straight back to the first one. A sequential test has no
+   * equivalent: its last answer ends it.
+   */
+  app.post("/api/submit", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const { attempt, error } = await requireAttempt(c, body);
+    if (error) return error;
+
+    const sql = c.get("sql");
+    const settings = JSON.parse(attempt.settings || "{}");
+    if (deliveryOf(attempt.settings) !== "open") {
+      return fail(c, "This test is handed in automatically.", 400);
+    }
+
+    const ordered = await orderedPaper(sql, attempt.assessment_id, attempt, settings);
+    const answered = new Set(
+      (await db.getResponses(sql, attempt.id)).map((r) => r.question_id)
+    );
+
+    const unanswered = ordered
+      .map((question, index) => (answered.has(question.id) ? null : index + 1))
+      .filter((n) => n !== null);
+
+    if (unanswered.length) {
+      return c.json({ error: describeUnanswered(unanswered), unanswered }, 409);
+    }
+
+    await db.submitAttempt(sql, attempt.id);
+    const totals = await db.scoreAttempt(sql, attempt);
+    return c.json({
+      submitted: true,
+      finished: true,
+      score: settings.show_final_score ? { ...totals, showToStudent: true } : null,
+    });
+  });
+
+  /**
    * What to show the student after they answer.
    *
    * The letter reported is the one THIS student saw. Choices are shuffled per
@@ -232,68 +396,6 @@ export function createApp({ getDriver, staticHandler }) {
       correctText: wasCorrect ? null : correctText,
     };
   }
-
-  /**
-   * Answer the current question and move on.
-   *
-   * The answer is final. The server checks that the question being answered is
-   * genuinely the one the student is on, so neither skipping ahead nor going
-   * back is possible whatever the page is persuaded to send.
-   */
-  app.post("/api/answer", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
-    const { attempt, error } = await requireAttempt(c, body);
-    if (error) return error;
-
-    const sql = c.get("sql");
-    const before = await stateFor(sql, contextOf(attempt));
-
-    if (before.finished) return fail(c, "You have answered every question.", 409);
-    if (!body.questionId || body.questionId !== before.question.id) {
-      return fail(c, "That is not the question you are on.", 409);
-    }
-
-    let graded;
-    try {
-      graded = await db.saveResponse(sql, attempt, {
-        questionId: body.questionId,
-        choiceId: body.choiceId,
-        msSpent: body.msSpent ?? null,
-        final: true,
-      });
-    } catch (err) {
-      return fail(c, err.message);
-    }
-
-    const after = await stateFor(sql, contextOf(attempt));
-
-    // Answering the last question finishes the test. There is no "hand in"
-    // step in a locked sequential test, and no way to leave one unsubmitted.
-    let score = null;
-    if (after.finished) {
-      await db.submitAttempt(sql, attempt.id);
-      const settings = JSON.parse(attempt.settings || "{}");
-      const totals = await db.scoreAttempt(sql, attempt);
-      score = settings.show_final_score ? { ...totals, showToStudent: true } : null;
-    }
-
-    const settings = JSON.parse(attempt.settings || "{}");
-    return c.json({
-      saved: true,
-      ...after,
-      score,
-      // Only when the test is set to show it. Off by default: in a room where
-      // students finish at different times, telling them turns into telling
-      // each other.
-      feedback: settings.show_question_feedback
-        ? await feedbackFor(sql, before.question, graded.isCorrect)
-        : null,
-    });
-  });
-
-  // There is deliberately no student-facing submit route. In a locked
-  // sequential test the last answer ends it; finishing early is the teacher
-  // closing the session, not the student opting out.
 
   app.post("/api/event", async (c) => {
     const body = await c.req.json().catch(() => ({}));

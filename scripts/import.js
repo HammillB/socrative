@@ -118,6 +118,11 @@ if (rosterPath) {
 // --------------------------------------------------------------------- quiz
 
 const quizPath = arg("quiz");
+const mode = (arg("mode", "sequential") || "").toLowerCase();
+if (!["sequential", "open"].includes(mode)) {
+  console.error(`--mode must be "sequential" or "open"`);
+  process.exit(1);
+}
 let assessmentId = null;
 
 if (quizPath) {
@@ -127,10 +132,15 @@ if (quizPath) {
   assessmentId = await createAssessment(sql, teacher.id, {
     title,
     settings: {
+      // sequential : one question, answered once, no way back
+      // open       : Back and Next, changeable answers, hand in at the end
+      delivery: mode,
       shuffle_questions: true,
       shuffle_choices: true,
-      show_question_feedback: true,   // tell them right/wrong after each answer
-      show_final_score: false,        // but not the overall score
+      // Right/wrong after each answer. Only meaningful in sequential mode --
+      // a student who could go back would just correct themselves.
+      show_question_feedback: mode === "sequential",
+      show_final_score: false,
     },
   });
 
@@ -168,6 +178,9 @@ if (quizPath) {
   }
 
   console.log(`Quiz: "${title}" -- ${position} questions imported`);
+  console.log(mode === "open"
+    ? `  Open navigation: Back and Next, answers changeable, hand in at the end.`
+    : `  Sequential: one question at a time, answers final, feedback after each.`);
 
   if (withExplanation < position) {
     console.log(`

@@ -5,10 +5,17 @@ A self-hosted replacement for Socrative, for multiple-choice science tests.
 Students join with a class code and their student number, take the test on a
 Chromebook, and it grades itself. Everything runs on your own database.
 
-Students are served **one question at a time**. They pick a letter, submit,
-and are told straight away whether they were right — with the correct answer
-and an explanation when they were not. Answers are final and there is no
-going back.
+Students always see **one question at a time**. Two delivery modes decide what
+they can do with it:
+
+| | Sequential | Open navigation |
+|---|---|---|
+| Moving about | forward only | Back and Next |
+| Changing an answer | no | yes, until they hand in |
+| Right/wrong after each | yes, with the answer and why | no |
+| Finishing | the last answer ends it | Hand in, blocked while anything is blank |
+
+Pick one per test with `--mode sequential` or `--mode open`.
 
 **Status: Phase 2, in progress.** The student side works end to end and the
 teacher's live results board is running. Tests are still set up from the
@@ -123,14 +130,25 @@ web/live.html       the teacher's live results board
 
 ### Things worth knowing
 
-**One question at a time, enforced by the server.** The browser is never told
+**The sequential lock is enforced by the server.** The browser is never told
 which question a student is on; the server works it out from how many they
 have answered. Answering anything other than the current question is refused,
 so neither going back nor skipping ahead is possible however the page is
 tampered with. A rule the browser enforces is not a rule.
 
-**Only one question is ever sent.** The whole paper is never in the browser,
-so a student who reads the network traffic still cannot read ahead.
+**In sequential mode only one question is ever sent.** The whole paper never
+reaches the browser, so a student reading the network traffic still cannot
+read ahead. Open navigation does send the whole paper — a student may see
+every question there anyway — which is what lets that mode keep working
+through a dropped connection.
+
+**Handing in is refused while anything is blank**, and the refusal names the
+questions and offers to jump to the first one. It is checked in the page so a
+student with no connection still gets a useful answer, and again on the server
+so it cannot be clicked past.
+
+**Open navigation gives no per-question feedback.** A student who could see
+right or wrong before handing in would simply change their answer.
 
 **Answers are graded and final as they are submitted.** Answering the last
 question ends the test by itself — there is no hand-in step to forget, and no
@@ -140,11 +158,11 @@ way to leave a paper unsubmitted.
 student logs back in — on that Chromebook or any other — and lands on the
 question they had reached, with everything before it recorded.
 
-**The trade-off worth knowing:** because the next question comes from the
-server, a student cannot advance while the network is down. The page retries
-and keeps their selection, but they wait. An open-navigation test could cache
-the whole paper and carry on offline; a locked sequential one cannot. That is
-the cost of the mode, not a defect in it.
+**The trade-off worth knowing:** in sequential mode the next question comes
+from the server, so a student cannot advance while the network is down. The
+page retries and keeps their selection, but they wait. Open navigation has the
+whole paper already and carries on regardless, syncing when the connection
+returns. That difference is the cost of locking a test, not a defect in it.
 
 **Correct answers never reach the browser before they are earned.** What a
 student is sent contains no `isCorrect` anywhere — checking the page source
@@ -185,11 +203,15 @@ npm run dev      # in one terminal
 npm test         # in another
 ```
 
-34 checks covering the student flow and the board, including the ones that
-would be expensive to get wrong: that a dead device resumes on the right
-question, that going back and skipping ahead are refused by the server, that
+48 checks covering both delivery modes and the board, including the ones that
+would be expensive to get wrong: that a dead device resumes in the right
+place, that going back and skipping ahead are refused by the server in
+sequential mode, that an open test cannot be handed in with blanks, that
 feedback names the letter the student actually saw, and that a shuffled paper
 still maps to the right canonical letter on the teacher's grid.
+
+The suite expects two sessions — a sequential one on `HEAT1` and an open one
+on `OPEN1`.
 
 `node scripts/demo-class.js` drives a fake class through a test if you want
 something to look at on the board.

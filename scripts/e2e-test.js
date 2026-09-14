@@ -188,11 +188,78 @@ finishedDb.close();
 check("the last answer submits the test automatically",
   attemptRow.status === "submitted" && !!attemptRow.submitted_at);
 
+// --- 6b. open navigation ----------------------------------------------------
+// A different set of rules entirely: move about freely, change answers, and
+// hand in at the end -- but only once nothing is blank.
+
+const OPEN = process.env.OPEN_CODE ?? "OPEN1";
+const openJoin = await post("/api/join", { code: OPEN, studentNumber: "100002" });
+
+if (openJoin.status !== 200) {
+  check("open-navigation session exists", false,
+    `${openJoin.body.error} -- create one with: node scripts/import.js ... --mode open --code ${OPEN}`);
+} else {
+  let open = openJoin.body;
+  check("open test reports its mode", open.delivery === "open");
+  check("the whole paper is available to move through",
+    Array.isArray(open.paper) && open.paper.length === open.total);
+  check("open paper carries no answer key",
+    !/isCorrect|is_correct/i.test(JSON.stringify(open)));
+  check("nothing answered yet", Object.keys(open.answers).length === 0);
+
+  // Out of order is fine here: answer the third question first.
+  const third = open.paper[2];
+  const a = await post("/api/answer", {
+    token: open.token, questionId: third.id, choiceId: third.choices[0].id,
+  });
+  check("questions can be answered out of order", a.status === 200, a.body.error);
+  check("no right/wrong is revealed in open mode", a.body.feedback === undefined);
+
+  // And answers can be revised, which the sequential mode refuses outright.
+  const changed = await post("/api/answer", {
+    token: open.token, questionId: third.id, choiceId: third.choices[1].id,
+  });
+  check("an answer can be changed", changed.status === 200, changed.body.error);
+
+  const afterChange = await post("/api/resume", { token: open.token });
+  check("the change stuck",
+    String(afterChange.body.answers[third.id]) === String(third.choices[1].id));
+  check("changing does not add a second answer", afterChange.body.answered === 1);
+
+  // Handing in with blanks is refused, and the refusal says which ones.
+  const tooSoon = await post("/api/submit", { token: open.token });
+  check("cannot hand in with questions unanswered", tooSoon.status === 409);
+  check("the refusal lists which questions are blank",
+    Array.isArray(tooSoon.body.unanswered) &&
+    tooSoon.body.unanswered.length === open.total - 1);
+  check("the blank list uses the numbers the student sees",
+    !tooSoon.body.unanswered.includes(3) && tooSoon.body.unanswered[0] === 1);
+
+  // Fill in the rest, then hand in.
+  for (const question of open.paper) {
+    if (String(afterChange.body.answers[question.id]) !== "undefined" &&
+        afterChange.body.answers[question.id] != null) continue;
+    await post("/api/answer", {
+      token: open.token, questionId: question.id, choiceId: keyOf.get(question.id),
+    });
+  }
+
+  const handedIn = await post("/api/submit", { token: open.token });
+  check("hands in once everything is answered", handedIn.status === 200, handedIn.body.error);
+  check("handing in reports the test finished", handedIn.body.finished === true);
+
+  const afterHandIn = await post("/api/answer", {
+    token: open.token, questionId: third.id, choiceId: third.choices[0].id,
+  });
+  check("nothing can be changed after handing in", afterHandIn.status === 409);
+}
+
 // --- 7. the teacher's live board -------------------------------------------
 
 const boardDb = new DatabaseSync(DB);
-const dashboardToken =
-  boardDb.prepare(`SELECT dashboard_token FROM sessions LIMIT 1`).get()?.dashboard_token;
+const dashboardToken = boardDb
+  .prepare(`SELECT dashboard_token FROM sessions WHERE join_code = ?`)
+  .get(CODE)?.dashboard_token;
 boardDb.close();
 
 if (!dashboardToken) {
