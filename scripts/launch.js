@@ -3,7 +3,7 @@
  *
  *   node scripts/launch.js --teacher you@school.org                  # list quizzes
  *   node scripts/launch.js --teacher you@school.org --quiz 3 \
- *        --section INTSCIA3 --code HEAT1 --mode sequential
+ *        --section INTSCIA3 --mode sequential
  *
  * The mode, the shuffling and the score setting are chosen HERE, not when the
  * questions were imported -- so one quiz can run locked for a graded test and
@@ -64,7 +64,7 @@ if (!quizId) {
     }
     console.log(`\nLaunch one with:`);
     console.log(`  node scripts/launch.js --teacher ${email} --quiz <id>` +
-                ` --section <room> --code <CODE> --mode sequential|open\n`);
+                ` --section <room> --mode sequential|open\n`);
   }
   database.close();
   process.exit(0);
@@ -75,12 +75,6 @@ if (!quizId) {
 const assessment = await findAssessment(sql, teacher.id, Number(quizId));
 if (!assessment) {
   console.error(`No quiz ${quizId} belonging to ${email}.`);
-  process.exit(1);
-}
-
-const joinCode = arg("code");
-if (!joinCode) {
-  console.error("--code is required (the class code students type in)");
   process.exit(1);
 }
 
@@ -102,9 +96,9 @@ const already = await findOpenSessionForSection(sql, teacher.id, sectionId);
 if (already) {
   if (flag("close-open")) {
     await closeSession(sql, teacher.id, already.id);
-    console.log(`Closed "${already.title}" (${already.join_code}) in ${sectionName}.`);
+    console.log(`Closed "${already.title}" in ${sectionName}.`);
   } else {
-    console.error(`"${already.title}" is still open in ${sectionName} on code ${already.join_code}.`);
+    console.error(`"${already.title}" is still open in ${sectionName}.`);
     console.error(`Close it first, or re-run with --close-open.`);
     process.exit(1);
   }
@@ -123,14 +117,11 @@ try {
   await createSession(sql, teacher.id, {
     assessmentId: assessment.id,
     sectionId,
-    joinCode,
     settings,
     dashboardToken,
   });
 } catch (err) {
-  console.error(/UNIQUE/i.test(err.message)
-    ? `The class code ${joinCode.toUpperCase()} is already in use. Pick another.`
-    : err.message);
+  console.error(err.message);
   process.exit(1);
 }
 
@@ -138,7 +129,7 @@ const host = arg("host", "http://localhost:8787");
 console.log(`\n"${assessment.title}" is open.\n`);
 for (const line of describeSettings(settings)) console.log(`  ${line}`);
 console.log(`\nStudents go to ${host} and enter:`);
-console.log(`    class code      ${joinCode.toUpperCase()}`);
+console.log(`    room name       ${sectionName}`);
 console.log(`    student number  (their own)`);
 console.log(`\nYour live board -- keep this link to yourself, it shows the answers:`);
 console.log(`    ${host}/live.html#${dashboardToken}\n`);

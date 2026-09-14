@@ -71,7 +71,7 @@ export async function listSections(sql, teacherId) {
 
 export async function listSessions(sql, teacherId) {
   return sql.all(
-    `SELECT s.id, s.join_code, s.state, s.settings, s.created_at,
+    `SELECT s.id, s.state, s.settings, s.created_at,
             s.dashboard_token, a.title, sec.name AS section,
             (SELECT COUNT(*) FROM attempts at WHERE at.session_id = s.id) AS joined
        FROM sessions s
@@ -251,34 +251,47 @@ export async function getAssessmentQuestions(sql, assessmentId, { includeAnswers
 
 // ----------------------------------------------------------------- testing
 
+/** A room by the name a student types. Case and stray spaces are forgiven. */
+export async function findSectionByName(sql, name) {
+  return sql.get(
+    `SELECT * FROM sections WHERE LOWER(name) = LOWER(?)`,
+    [String(name ?? "").trim()]
+  );
+}
+
 /**
- * A session by its join code.
+ * Whatever test a room is running right now.
+ *
+ * This is what a student's room name resolves to. The room name is permanent;
+ * what sits behind it is the teacher's choice, and changes from one test to
+ * the next without students being told anything new.
  *
  * `settings` deliberately comes from the SESSION, not the quiz: how a test
  * behaves is chosen by the teacher when they launch it, and is fixed for the
  * life of that run.
  */
-export async function findSessionByCode(sql, joinCode) {
+export async function findOpenSessionInRoom(sql, sectionId) {
   return sql.get(
-    `SELECT s.id, s.teacher_id, s.assessment_id, s.section_id, s.join_code,
+    `SELECT s.id, s.teacher_id, s.assessment_id, s.section_id,
             s.state, s.settings, a.title
        FROM sessions s
        JOIN assessments a ON a.id = s.assessment_id
-      WHERE s.join_code = ?`,
-    [String(joinCode).trim().toUpperCase()]
+      WHERE s.section_id = ? AND s.state <> 'closed'
+      ORDER BY s.created_at DESC
+      LIMIT 1`,
+    [sectionId]
   );
 }
 
 /** Launch a quiz. The settings passed here are what the students will get. */
 export async function createSession(
-  sql, teacherId, { assessmentId, sectionId, joinCode, settings = {}, dashboardToken = null }
+  sql, teacherId, { assessmentId, sectionId, settings = {}, dashboardToken = null }
 ) {
   const { lastInsertId } = await sql.run(
     `INSERT INTO sessions
-       (teacher_id, assessment_id, section_id, join_code, settings, dashboard_token)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [teacherId, assessmentId, sectionId, joinCode.toUpperCase(),
-     JSON.stringify(settings), dashboardToken]
+       (teacher_id, assessment_id, section_id, settings, dashboard_token)
+     VALUES (?, ?, ?, ?, ?)`,
+    [teacherId, assessmentId, sectionId, JSON.stringify(settings), dashboardToken]
   );
   return lastInsertId;
 }
@@ -312,7 +325,7 @@ export async function listAssessments(sql, teacherId) {
  */
 export async function findOpenSessionForSection(sql, teacherId, sectionId) {
   return sql.get(
-    `SELECT s.id, s.join_code, s.state, s.dashboard_token, a.title
+    `SELECT s.id, s.state, s.dashboard_token, a.title
        FROM sessions s
        JOIN assessments a ON a.id = s.assessment_id
       WHERE s.teacher_id = ? AND s.section_id = ? AND s.state <> 'closed'
@@ -498,10 +511,11 @@ export async function getLiveBoard(sql, dashboardToken) {
   const LETTERS = "ABCDEFGH";
 
   const session = await sql.get(
-    `SELECT s.id, s.teacher_id, s.assessment_id, s.section_id, s.join_code,
-            s.state, s.settings, a.title
+    `SELECT s.id, s.teacher_id, s.assessment_id, s.section_id,
+            s.state, s.settings, a.title, sec.name AS room
        FROM sessions s
        JOIN assessments a ON a.id = s.assessment_id
+       LEFT JOIN sections sec ON sec.id = s.section_id
       WHERE s.dashboard_token = ?`,
     [dashboardToken]
   );
@@ -631,7 +645,7 @@ export async function getLiveBoard(sql, dashboardToken) {
     session: {
       id: session.id,
       title: session.title,
-      joinCode: session.join_code,
+      room: session.room,
       state: session.state,
       delivery: JSON.parse(session.settings || "{}").delivery ?? "sequential",
     },

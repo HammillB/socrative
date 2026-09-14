@@ -117,8 +117,8 @@
   <!-- join ------------------------------------------------------------- -->
   <form id="join" class="join">
     <h1>Class Test</h1>
-    <p class="sub">Enter the code on the board and your student number.</p>
-    <label for="code">Class code</label>
+    <p class="sub">Enter your room name and your student number.</p>
+    <label for="code">Room name</label>
     <input type="text" id="code" autocomplete="off" autocapitalize="characters"
            spellcheck="false" required>
     <label for="student">Student number</label>
@@ -600,7 +600,7 @@
       index = 0;
       queue = [];
       apply(await post("/api/join", {
-        code: $("code").value.trim().toUpperCase(),
+        room: $("code").value.trim(),
         studentNumber: $("student").value.trim(),
       }));
     } catch (err) {

@@ -31,6 +31,8 @@ CREATE TABLE IF NOT EXISTS teachers (
 -- No password column. Teachers sign in with their school Google account,
 -- so there are no credentials here to leak or reset.
 
+-- A room. Students type its name to get in, so the name is what has to be
+-- unique across the whole install, not just within one teacher.
 CREATE TABLE IF NOT EXISTS sections (
   id          INTEGER PRIMARY KEY,
   teacher_id  INTEGER NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
@@ -127,10 +129,14 @@ CREATE TABLE IF NOT EXISTS sessions (
   teacher_id     INTEGER NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
   assessment_id  INTEGER NOT NULL REFERENCES assessments(id) ON DELETE CASCADE,
   section_id     INTEGER REFERENCES sections(id) ON DELETE SET NULL,
-  join_code      TEXT NOT NULL UNIQUE,
-  -- Until teacher sign-in exists (Phase 2), the live board is reached by an
-  -- unguessable link rather than left open. The board contains the answer
-  -- key, so it must never be readable by anyone holding only a join code.
+  -- No join code. Students reach a test through the ROOM, whose name never
+  -- changes, and the teacher decides what that room is currently running.
+  -- A per-test code would be one more thing to read off the board and one
+  -- more thing to mistype.
+  --
+  -- Until teacher sign-in exists, the live board is reached by an unguessable
+  -- link rather than left open. The board contains the answer key, so it must
+  -- never be reachable by anyone who merely knows the room.
   dashboard_token TEXT UNIQUE,
   -- How THIS run of the quiz behaves: delivery mode, shuffling, feedback.
   -- The teacher chooses at launch, the same way Socrative does, so one quiz
@@ -187,9 +193,10 @@ CREATE INDEX IF NOT EXISTS idx_items_assessment    ON assessment_items(assessmen
 CREATE INDEX IF NOT EXISTS idx_attempts_session    ON attempts(session_id);
 -- One test open per room at a time: the lookup that enforces it.
 CREATE INDEX IF NOT EXISTS idx_sessions_open        ON sessions(section_id, state);
--- One room per name per teacher. Declared as an index rather than a table
--- constraint so that running init.js applies it to an existing database too:
--- without it a stray insert quietly makes a second "INTSCIA3" and half the
--- class lands in the wrong one.
-CREATE UNIQUE INDEX IF NOT EXISTS idx_sections_name ON sections(teacher_id, name);
+-- Room names are how students get in, so they are unique across the install
+-- and matched without regard to case. Declared as an index rather than a
+-- table constraint so that running init.js applies it to an existing database
+-- too: without it a stray insert quietly makes a second "INTSCIA3" and half
+-- the class lands in the wrong one.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sections_name ON sections(LOWER(name));
 CREATE INDEX IF NOT EXISTS idx_responses_attempt   ON responses(attempt_id);

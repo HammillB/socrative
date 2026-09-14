@@ -216,26 +216,35 @@ export function createApp({ getDriver, staticHandler }) {
     return c.json(await stateFor(c.get("sql"), contextOf(attempt)));
   });
 
-  /** Join a test, or pick up where you left off. */
+  /**
+   * Join whatever test this room is running, or pick up where you left off.
+   *
+   * Students type the ROOM name, which never changes, and their own number.
+   * What that room is running is the teacher's business, and can change from
+   * one test to the next without students being told anything new.
+   */
   app.post("/api/join", async (c) => {
     const sql = c.get("sql");
-    const { code, studentNumber } = await c.req.json().catch(() => ({}));
-    if (!code || !studentNumber) {
-      return fail(c, "Enter both the class code and your student number.");
+    const { room, studentNumber } = await c.req.json().catch(() => ({}));
+    if (!room || !studentNumber) {
+      return fail(c, "Enter both the room name and your student number.");
     }
 
-    const session = await db.findSessionByCode(sql, code);
-    if (!session) return fail(c, "That class code was not recognised.", 404);
-    if (session.state === "closed") return fail(c, "That test is closed.", 409);
+    const section = await db.findSectionByName(sql, room);
+    if (!section) return fail(c, "That room name was not recognised.", 404);
+
+    const session = await db.findOpenSessionInRoom(sql, section.id);
+    if (!session) {
+      return fail(c, `No test is open in ${section.name} right now.`, 404);
+    }
     if (session.state === "paused") return fail(c, "Your teacher has paused the test.", 409);
 
     const student = await db.findStudentByNumber(sql, session.teacher_id, studentNumber);
-    if (!student) return fail(c, "That student number is not on this class roster.", 404);
+    if (!student) return fail(c, "That student number is not on this room's roster.", 404);
 
-    // A test launched into a room is for that room's roster. Without this a
-    // student could join another class's test simply by knowing its code.
-    if (session.section_id && !(await db.isEnrolled(sql, student.id, session.section_id))) {
-      return fail(c, "That student number is not on this class roster.", 404);
+    // The test belongs to this room, so the room's roster is what gates it.
+    if (!(await db.isEnrolled(sql, student.id, section.id))) {
+      return fail(c, "That student number is not on this room's roster.", 404);
     }
 
     let attempt = await db.findAttempt(sql, session.id, student.id);
@@ -473,7 +482,6 @@ export function createApp({ getDriver, staticHandler }) {
             openSession: open && {
               id: open.id,
               title: open.title,
-              joinCode: open.join_code,
               state: open.state,
               boardUrl: `/live.html#${open.dashboard_token}`,
             },
@@ -484,7 +492,6 @@ export function createApp({ getDriver, staticHandler }) {
         id: row.id,
         title: row.title,
         section: row.section,
-        joinCode: row.join_code,
         state: row.state,
         joined: row.joined,
         created: row.created_at,
@@ -508,13 +515,9 @@ export function createApp({ getDriver, staticHandler }) {
     const questions = await db.getAssessmentQuestions(sql, quiz.id);
     if (!questions.length) return fail(c, "That quiz has no questions in it yet.");
 
-    const joinCode = String(body.joinCode || "").trim().toUpperCase();
-    if (!/^[A-Z0-9]{3,12}$/.test(joinCode)) {
-      return fail(c, "A class code should be 3 to 12 letters or numbers.");
-    }
-
-    // A test is launched into a room, and a room runs one at a time. Two open
-    // codes for the same class is how half a period ends up in the wrong test.
+    // A test is launched into a room, and a room runs one at a time. Students
+    // only ever type the room name, so "which test" is entirely the teacher's
+    // choice and needs no announcement.
     const sectionId = Number(body.sectionId);
     if (!sectionId) return fail(c, "Choose which room this test is for.");
 
@@ -525,12 +528,11 @@ export function createApp({ getDriver, staticHandler }) {
     const already = await db.findOpenSessionForSection(sql, teacher.id, sectionId);
     if (already) {
       return c.json({
-        error: `"${already.title}" is still open in ${room.name} on code ` +
-               `${already.join_code}. Close it before launching another.`,
+        error: `"${already.title}" is still open in ${room.name}. ` +
+               `Close it before launching another.`,
         openSession: {
           id: already.id,
           title: already.title,
-          joinCode: already.join_code,
           boardUrl: `/live.html#${already.dashboard_token}`,
         },
       }, 409);
@@ -554,21 +556,17 @@ export function createApp({ getDriver, staticHandler }) {
       await db.createSession(sql, teacher.id, {
         assessmentId: quiz.id,
         sectionId,
-        joinCode,
         settings,
         dashboardToken,
       });
     } catch (err) {
-      return fail(c, /UNIQUE/i.test(err.message)
-        ? `The class code ${joinCode} is already in use. Pick another.`
-        : err.message);
+      return fail(c, err.message);
     }
 
     return c.json({
       launched: true,
       title: quiz.title,
       room: room.name,
-      joinCode,
       questions: questions.length,
       settings,
       boardUrl: `/live.html#${dashboardToken}`,

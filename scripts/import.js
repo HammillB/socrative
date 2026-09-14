@@ -195,28 +195,29 @@ if (quizPath) {
 
 // ------------------------------------------------------------------ session
 
-const joinCode = arg("code");
-if (joinCode && assessmentId) {
+// --- launch it straight away, if a room was given ---------------------------
+
+if (sectionName && assessmentId) {
   const settings = launchSettings({ mode });
 
   // The live board shows the answer key, so it gets its own unguessable link
-  // rather than being reachable by the join code the whole class knows.
+  // rather than being reachable by anyone who knows the room.
   const dashboardToken = randomUUID().replace(/-/g, "");
   await createSession(sql, teacher.id, {
-    assessmentId, sectionId, joinCode, settings, dashboardToken,
+    assessmentId, sectionId, settings, dashboardToken,
   });
 
   const host = arg("host", "http://localhost:8787");
-  console.log(`\nTest is open.\n`);
+  console.log(`\nTest is open in ${sectionName}.\n`);
   for (const line of describeSettings(settings)) console.log(`  ${line}`);
   console.log(`\nStudents go to ${host} and enter:`);
-  console.log(`    class code      ${joinCode.toUpperCase()}`);
+  console.log(`    room name       ${sectionName}`);
   console.log(`    student number  (their own)`);
   console.log(`\nYour live board -- keep this link to yourself, it shows the answers:`);
   console.log(`    ${host}/live.html#${dashboardToken}`);
   console.log(`\nTo run these same questions again in a different mode:`);
   console.log(`    node scripts/launch.js --teacher ${email} --quiz ${assessmentId}` +
-              ` --section <room> --code <CODE> --mode open\n`);
+              ` --section ${sectionName} --mode open --close-open\n`);
 }
 
 database.close();

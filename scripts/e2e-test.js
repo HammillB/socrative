@@ -14,8 +14,10 @@
 import { DatabaseSync } from "node:sqlite";
 
 const BASE = process.env.BASE ?? "http://localhost:8787";
-const CODE = process.env.CODE ?? "HEAT1";
-const OPEN = process.env.OPEN_CODE ?? "OPEN1";
+// Students join by ROOM name -- the name never changes, and the teacher
+// decides what is running behind it.
+const ROOM = process.env.ROOM ?? "INTSCIA3";        // running a sequential test
+const OPEN_ROOM = process.env.OPEN_ROOM ?? "INTSCIA4";  // running an open one
 const DB = process.env.DB_PATH ?? "classroom.db";
 
 let failures = 0;
@@ -43,30 +45,35 @@ async function post(path, body) {
   const database = new DatabaseSync(DB);
   database.exec("DELETE FROM events; DELETE FROM responses; DELETE FROM attempts;");
 
-  const reopened = database
-    .prepare(`UPDATE sessions SET state = 'open' WHERE join_code IN (?, ?)`)
-    .run(CODE, OPEN);
-  if (reopened.changes < 2) {
-    console.error(
-      `
-This suite expects two sessions: ${CODE} (sequential) and ${OPEN} (open),
-` +
-      `in different rooms. Set them up with:
-
-` +
-      `  node scripts/import.js --teacher demo@school.test --roster fixtures/roster-demo.csv \
-` +
-      `      --section INTSCIA3 --quiz fixtures/heat_test.csv --code ${CODE} --mode sequential
-` +
-      `  node scripts/import.js --teacher demo@school.test --roster fixtures/roster-demo.csv \
-` +
-      `      --section INTSCIA4
-` +
-      `  node scripts/launch.js --teacher demo@school.test --quiz 1 \
-` +
-      `      --section INTSCIA4 --code ${OPEN} --mode open
-`
-    );
+  // Reopen the most recent test in each room, so the suite does not depend
+  // on what was last done by hand in the launch screen.
+  const reopen = database.prepare(
+    "UPDATE sessions SET state = 'open' " +
+    " WHERE id = (SELECT s.id FROM sessions s" +
+    "               JOIN sections sec ON sec.id = s.section_id" +
+    "              WHERE LOWER(sec.name) = LOWER(?)" +
+    "              ORDER BY s.created_at DESC LIMIT 1)");
+  if (reopen.run(ROOM).changes + reopen.run(OPEN_ROOM).changes < 2) {
+    [
+      "",
+      `This suite expects a test running in each of two rooms: ${ROOM}`,
+      `(sequential) and ${OPEN_ROOM} (open). A room runs one at a time.`,
+      "",
+      "Set them up with:",
+      "",
+      `  node scripts/import.js --teacher demo@school.test`,
+      `      --roster fixtures/roster-demo.csv --section ${ROOM}`,
+      `      --quiz fixtures/heat_test.csv --mode sequential`,
+      "",
+      `  node scripts/import.js --teacher demo@school.test`,
+      `      --roster fixtures/roster-demo.csv --section ${OPEN_ROOM}`,
+      "",
+      `  node scripts/launch.js --teacher demo@school.test --quiz 1`,
+      `      --section ${OPEN_ROOM} --mode open`,
+      "",
+      "(all on one line each)",
+      "",
+    ].forEach((line) => console.error(line));
     process.exit(1);
   }
   database.close();
@@ -85,8 +92,8 @@ console.log(`\nTesting ${BASE}\n`);
 
 // --- 1. starting ------------------------------------------------------------
 
-const join = await post("/api/join", { code: CODE, studentNumber: "100001" });
-check("student can join with code + number", join.status === 200, join.body.error);
+const join = await post("/api/join", { room: ROOM, studentNumber: "100001" });
+check("student can join with room name + number", join.status === 200, join.body.error);
 
 let state = join.body;
 check("starts on question 1", state.number === 1);
@@ -173,7 +180,7 @@ check("refusals did not move the student", stillHere.body.number === 3);
 // Everything the browser held is gone. The student signs in on another machine
 // with nothing but the class code and their student number.
 
-const reJoin = await post("/api/join", { code: CODE, studentNumber: "100001" });
+const reJoin = await post("/api/join", { room: ROOM, studentNumber: "100001" });
 check("can rejoin after losing the device", reJoin.status === 200, reJoin.body.error);
 check("resumes on the same question number", reJoin.body.number === 3);
 check("resumes on the same question", reJoin.body.question.id === state.question.id);
@@ -189,7 +196,9 @@ check("a choice from another question is refused", bogusChoice.status === 400);
 check("an invented token is refused",
   (await post("/api/resume", { token: "not-a-real-token" })).status === 404);
 check("a number not on the roster is refused",
-  (await post("/api/join", { code: CODE, studentNumber: "999999" })).status === 404);
+  (await post("/api/join", { room: ROOM, studentNumber: "999999" })).status === 404);
+check("an unknown room name is refused",
+  (await post("/api/join", { room: "NOSUCHROOM", studentNumber: "100001" })).status === 404);
 
 // --- 6. working through to the end ------------------------------------------
 
@@ -223,11 +232,11 @@ check("the last answer submits the test automatically",
 // A different set of rules entirely: move about freely, change answers, and
 // hand in at the end -- but only once nothing is blank.
 
-const openJoin = await post("/api/join", { code: OPEN, studentNumber: "100002" });
+const openJoin = await post("/api/join", { room: OPEN_ROOM, studentNumber: "100002" });
 
 if (openJoin.status !== 200) {
-  check("open-navigation session exists", false,
-    `${openJoin.body.error} -- create one with: node scripts/import.js ... --mode open --code ${OPEN}`);
+  check("a room is running an open-navigation test", false,
+    `${openJoin.body.error} -- launch one into ${OPEN_ROOM} with --mode open`);
 } else {
   let open = openJoin.body;
   check("open test reports its mode", open.delivery === "open");
@@ -291,9 +300,11 @@ if (openJoin.status !== 200) {
 
 {
   const modeDb = new DatabaseSync(DB);
-  const sessions = modeDb.prepare(
-    `SELECT join_code, assessment_id, settings, section_id FROM sessions
-      WHERE join_code IN (?, ?)`).all(CODE, OPEN);
+  const sessions = modeDb.prepare(`
+    SELECT s.assessment_id, s.settings, s.section_id
+      FROM sessions s JOIN sections sec ON sec.id = s.section_id
+     WHERE LOWER(sec.name) IN (LOWER(?), LOWER(?)) AND s.state <> 'closed'`)
+    .all(ROOM, OPEN_ROOM);
   const questionCount = modeDb.prepare(`SELECT COUNT(*) AS n FROM questions`).get().n;
   const quizCount = modeDb.prepare(`SELECT COUNT(*) AS n FROM assessments`).get().n;
   modeDb.close();
@@ -310,8 +321,8 @@ if (openJoin.status !== 200) {
     modes.join() === "open,sequential", modes.join(" / "));
 
   // What students are told is decided entirely by the session they joined.
-  const seq = await post("/api/join", { code: CODE, studentNumber: "100006" });
-  const opn = await post("/api/join", { code: OPEN, studentNumber: "100006" });
+  const seq = await post("/api/join", { room: ROOM, studentNumber: "100006" });
+  const opn = await post("/api/join", { room: OPEN_ROOM, studentNumber: "100006" });
   check("the same student gets the mode the teacher launched",
     seq.body.delivery === "sequential" && opn.body.delivery === "open");
   check("students are given no choice of mode",
@@ -346,24 +357,23 @@ if (openJoin.status !== 200) {
 
     const busy = console_.rooms.find((r) => r.openSession);
     check("a room already running a test says so", !!busy,
-      busy ? `${busy.name}: ${busy.openSession.joinCode}` : "none found");
+      busy ? `${busy.name}: ${busy.openSession.title}` : "none found");
 
     // A room runs one test at a time. Launching into a busy one is refused,
     // and the refusal points at what is already there.
     if (busy) {
       const clash = await post(`/api/teacher/${consoleToken}/launch`, {
-        quizId: console_.quizzes[0].id, joinCode: "BUSY1",
-        mode: "open", sectionId: busy.id,
+        quizId: console_.quizzes[0].id, mode: "open", sectionId: busy.id,
       });
       check("cannot launch into a room that already has a test open",
         clash.status === 409, clash.body.error);
-      check("the refusal names the test in the way", clash.body.openSession?.joinCode
-        === busy.openSession.joinCode);
+      check("the refusal names the test in the way",
+        clash.body.openSession?.title === busy.openSession.title);
     }
 
     check("a launch must name a room",
       (await post(`/api/teacher/${consoleToken}/launch`, {
-        quizId: console_.quizzes[0].id, joinCode: "NOROOM", mode: "open",
+        quizId: console_.quizzes[0].id, mode: "open",
       })).status === 400);
 
     // Launching is where the mode is decided, so this is the important one.
@@ -386,10 +396,8 @@ if (openJoin.status !== 200) {
       .run(spare.id);
     freeRoomDb.close();
 
-    const code = "T" + Math.random().toString(36).slice(2, 7).toUpperCase();
     const launch = await post(`/api/teacher/${consoleToken}/launch`, {
       quizId: console_.quizzes[0].id,
-      joinCode: code,
       mode: "open",
       sectionId: spare.id,
       shuffleQuestions: true,
@@ -404,10 +412,11 @@ if (openJoin.status !== 200) {
       launch.body.settings.show_question_feedback === false);
     check("other settings are honoured", launch.body.settings.show_final_score === true);
 
-    // And a student on that room's roster gets exactly what was launched.
-    // SPARE has no roster, so the code alone is not enough -- which is the
-    // point: a test belongs to a room.
-    const stranger = await post("/api/join", { code, studentNumber: "100004" });
+    check("the launch names the room students will type", launch.body.room === "SPARE");
+
+    // SPARE has no roster, so knowing the room name is not enough -- which is
+    // the point: a test belongs to a room and its roster gates it.
+    const stranger = await post("/api/join", { room: "SPARE", studentNumber: "100004" });
     check("a student not on that room's roster is refused", stranger.status === 404);
   }
 }
@@ -415,9 +424,11 @@ if (openJoin.status !== 200) {
 // --- 7. the teacher's live board -------------------------------------------
 
 const boardDb = new DatabaseSync(DB);
-const dashboardToken = boardDb
-  .prepare(`SELECT dashboard_token FROM sessions WHERE join_code = ?`)
-  .get(CODE)?.dashboard_token;
+const dashboardToken = boardDb.prepare(`
+  SELECT s.dashboard_token FROM sessions s
+    JOIN sections sec ON sec.id = s.section_id
+   WHERE LOWER(sec.name) = LOWER(?) AND s.state <> 'closed'
+   ORDER BY s.created_at DESC LIMIT 1`).get(ROOM)?.dashboard_token;
 boardDb.close();
 
 if (!dashboardToken) {
@@ -450,9 +461,9 @@ if (!dashboardToken) {
   const me = board.students.find((s) => s.number === "100001");
   check("the finished student shows as handed in", me?.status === "submitted");
 
-  // A join code is known to the whole class; it must not open the board.
-  check("the join code does NOT open the board",
-    (await fetch(`${BASE}/api/live/${CODE}`)).status === 404);
+  // The room name is known to the whole class; it must not open the board.
+  check("the room name does NOT open the board",
+    (await fetch(`${BASE}/api/live/${ROOM}`)).status === 404);
 }
 
 // ---------------------------------------------------------------------------

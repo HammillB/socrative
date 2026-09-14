@@ -2,8 +2,10 @@
 
 A self-hosted replacement for Socrative, for multiple-choice science tests.
 
-Students join with a class code and their student number, take the test on a
-Chromebook, and it grades itself. Everything runs on your own database.
+**Students always type the same two things: their room name and their student
+number.** The room name never changes. What test sits behind it is entirely
+the teacher's choice, launched and closed from the launch screen — there is
+nothing new to read off the board each time.
 
 Students always see **one question at a time**. Two delivery modes decide what
 they can do with it:
@@ -74,8 +76,8 @@ ungradeable.
 
 Import puts the questions in; **launch** decides how a particular run behaves.
 `npm run init` prints a link to your launch screen: pick a quiz, pick a
-delivery method, set the toggles, and you get a class code and a link to the
-live board.
+delivery method, set the toggles, and it starts running in that room — with a
+link to the live board.
 
 Pick the room at the top, choose a quiz, then set how it runs:
 
@@ -95,8 +97,11 @@ Launch Quiz in INTSCIA3                          [ INTSCIA3  v ]
       Right or wrong after each.  Show Question Feedback   [on ]
   ( ) Open Navigation             Show Final Score         [off]
       Back and Next, changeable.
-      Hand in at the end.         Class code  ZFMZK   [ Launch ]
+      Hand in at the end.                        [ Launch ]
 ```
+
+There is no per-test code to hand out. Students type **INTSCIA3** today and
+**INTSCIA3** next month; you decide what that means.
 
 **A room runs one test at a time.** If a test is already open in the room you
 picked, the quiz list is put away and the screen offers the two things worth
@@ -120,8 +125,8 @@ quiz later cannot alter a test a class is part-way through.
 npm run dev
 ```
 
-Then open <http://localhost:8787>, enter the class code and a student number
-from the roster.
+Then open <http://localhost:8787> and enter the room name and a student number
+from that room's roster.
 
 The import command also prints a **live board** link. Open it on your own
 screen during a test:
@@ -145,7 +150,7 @@ is worth knowing before the period ends rather than at marking.
 
 `Names`, `Answers` and `Right / wrong` toggle independently, so the board can be
 projected without giving away the key. **The board link contains the answer key
-— keep it to yourself.** The class code will not open it.
+— keep it to yourself.** The room name will not open it.
 
 ---
 
@@ -202,9 +207,14 @@ so it cannot be clicked past.
 right or wrong before handing in would simply change their answer, so it is
 forced off for that mode rather than offered.
 
+**A room is the front door; the test behind it is swappable.** Students
+resolve a room name to whatever that room is currently running. Room names are
+unique across the whole install and matched without regard to case, because
+they are what students type.
+
 **A test belongs to a room, and the roster gates it.** A student whose number
-is not on that room's roster cannot join even with the code — otherwise
-knowing a code would be enough to sit another class's test.
+is not on that room's roster cannot join even knowing the room name —
+otherwise knowing a room would be enough to sit another class's test.
 
 **Launch settings live on the session, not the quiz.** How a test behaves is a
 property of a particular run, so the same questions can be launched twice with
@@ -270,17 +280,17 @@ npm run dev      # in one terminal
 npm test         # in another
 ```
 
-72 checks covering both delivery modes, the launch console and the board, including the ones that
+74 checks covering both delivery modes, the launch console and the board, including the ones that
 would be expensive to get wrong: that a dead device resumes in the right
 place, that going back and skipping ahead are refused by the server in
 sequential mode, that an open test cannot be handed in with blanks, that
 feedback names the letter the student actually saw, and that a shuffled paper
 still maps to the right canonical letter on the teacher's grid.
 
-The suite expects two sessions — a sequential one on `HEAT1` in one room and
-an open one on `OPEN1` in another, since a room runs one at a time. It reopens
-them itself if you closed them, and prints the commands to create them if they
-are missing.
+The suite expects a test running in each of two rooms — a sequential one in
+`INTSCIA3` and an open one in `INTSCIA4`, since a room runs one at a time. It
+reopens them itself if you closed them, and prints the commands to create them
+if they are missing.
 
 `node scripts/demo-class.js` drives a fake class through a test if you want
 something to look at on the board.

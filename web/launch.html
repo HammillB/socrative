@@ -94,7 +94,6 @@
   label.field span { display: block; margin-bottom: 6px; }
   input[type=text] { font: inherit; padding: 11px 13px; border: 1px solid var(--line);
                      border-radius: 7px; background: #fff; color: var(--ink); width: 160px; }
-  #code { text-transform: uppercase; letter-spacing: .1em; font-weight: 600; }
   .grow { flex: 1 1 auto; }
   button.go { font: inherit; font-size: 17px; font-weight: 700; cursor: pointer;
               border: 0; border-radius: 8px; padding: 13px 30px;
@@ -180,10 +179,6 @@
       </div>
 
       <div class="row">
-        <label class="field">
-          <span>Class code</span>
-          <input type="text" id="code" maxlength="12" autocomplete="off" spellcheck="false">
-        </label>
         <span class="grow"></span>
         <button class="go" id="launch" type="button">Launch</button>
       </div>
@@ -195,7 +190,8 @@
       <h2>Test is open</h2>
       <p class="lede" id="result-title"></p>
       <div class="bigcode" id="result-code"></div>
-      <p class="lede">Students go to this site and enter that code with their student number.</p>
+      <p class="lede">Students go to this site and enter that room name with their
+        student number. It is the same name every time — only what is behind it changes.</p>
       <div class="links">
         <a class="btn primary" id="board-link" target="_blank" rel="noopener">Open the live board</a>
       </div>
@@ -244,12 +240,6 @@
   };
 
   const room = () => data.rooms.find((r) => String(r.id) === String(roomId)) ?? null;
-
-  function randomCode() {
-    const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";   // no I or O: they read as 1 and 0
-    return Array.from({ length: 5 }, () =>
-      letters[Math.floor(Math.random() * letters.length)]).join("");
-  }
 
   function ago(iso) {
     const then = new Date((iso || "").replace(" ", "T") + "Z");
@@ -305,8 +295,7 @@
     if (open) {
       $("busy-title").textContent = `${current.name} already has a test open`;
       $("busy-lede").textContent =
-        `"${open.title}" is running on code ${open.joinCode}. ` +
-        `Close it before launching another.`;
+        `"${open.title}" is running. Close it before launching another.`;
       $("busy-board").href = open.boardUrl;
     }
   }
@@ -348,7 +337,6 @@
         $("setup-title").textContent = quiz.title;
         $("setup-lede").textContent =
           `${quiz.questions} questions, launching in ${room().name}.`;
-        $("code").value = randomCode();
         $("pick").hidden = true;
         $("setup").hidden = false;
         $("error").hidden = true;
@@ -476,13 +464,12 @@
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           ...chosen,
-          joinCode: $("code").value.trim().toUpperCase(),
           sectionId: roomId,
         }),
       });
       $("result-title").textContent =
         `${result.title} — ${result.questions} questions in ${result.room}`;
-      $("result-code").textContent = result.joinCode;
+      $("result-code").textContent = result.room;
       $("board-link").href = result.boardUrl;
       await load();
       $("busy").hidden = true;      // show the code, not the "already open" panel
