@@ -77,10 +77,17 @@ Import puts the questions in; **launch** decides how a particular run behaves.
 delivery method, set the toggles, and you get a class code and a link to the
 live board.
 
-```
-Launch a Test
+Pick the room at the top, choose a quiz, then set how it runs:
 
-  QUIZ   heat_test                                    25 questions
+```
+Launch Quiz in INTSCIA3                          [ INTSCIA3  v ]
+
+  WHICH QUIZ?           search…
+  NAME                                            MODIFIED
+  heat_test              25 questions          2 minutes ago
+  Momentum test          18 questions              4 days ago
+
+  ─── then ───────────────────────────────────────────────────
 
   DELIVERY METHOD                 SETTINGS
   (•) Instant Feedback            Shuffle Questions        [on ]
@@ -88,8 +95,13 @@ Launch a Test
       Right or wrong after each.  Show Question Feedback   [on ]
   ( ) Open Navigation             Show Final Score         [off]
       Back and Next, changeable.
-      Hand in at the end.         Class code  ZFMZK     [ Launch ]
+      Hand in at the end.         Class code  ZFMZK   [ Launch ]
 ```
+
+**A room runs one test at a time.** If a test is already open in the room you
+picked, the quiz list is put away and the screen offers the two things worth
+doing instead: open its live board, or close it. Two live codes for one class
+is how half a period ends up in the wrong test.
 
 Everything is also available from the command line:
 
@@ -190,6 +202,10 @@ so it cannot be clicked past.
 right or wrong before handing in would simply change their answer, so it is
 forced off for that mode rather than offered.
 
+**A test belongs to a room, and the roster gates it.** A student whose number
+is not on that room's roster cannot join even with the code — otherwise
+knowing a code would be enough to sit another class's test.
+
 **Launch settings live on the session, not the quiz.** How a test behaves is a
 property of a particular run, so the same questions can be launched twice with
 different rules and neither run changes when the quiz is edited.
@@ -254,15 +270,17 @@ npm run dev      # in one terminal
 npm test         # in another
 ```
 
-63 checks covering both delivery modes, the launch console and the board, including the ones that
+72 checks covering both delivery modes, the launch console and the board, including the ones that
 would be expensive to get wrong: that a dead device resumes in the right
 place, that going back and skipping ahead are refused by the server in
 sequential mode, that an open test cannot be handed in with blanks, that
 feedback names the letter the student actually saw, and that a shuffled paper
 still maps to the right canonical letter on the teacher's grid.
 
-The suite expects two sessions — a sequential one on `HEAT1` and an open one
-on `OPEN1`.
+The suite expects two sessions — a sequential one on `HEAT1` in one room and
+an open one on `OPEN1` in another, since a room runs one at a time. It reopens
+them itself if you closed them, and prints the commands to create them if they
+are missing.
 
 `node scripts/demo-class.js` drives a fake class through a test if you want
 something to look at on the board.

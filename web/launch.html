@@ -15,61 +15,69 @@
     margin: 0; background: var(--ground); color: var(--ink);
     font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
   }
-  .wrap { max-width: 900px; margin: 0 auto; padding: 28px 20px 80px; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 26px 20px 80px; }
 
-  header { display: flex; justify-content: space-between; align-items: baseline;
-           gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
-  h1 { font-size: 23px; margin: 0; }
+  header { display: flex; justify-content: space-between; align-items: center;
+           gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+  h1 { font-size: 22px; margin: 0; }
   .who { color: var(--muted); font-size: 15px; }
+  header select { font: inherit; font-weight: 600; padding: 9px 12px;
+                  border: 1px solid var(--line); border-radius: 7px; background: #fff;
+                  color: var(--ink); }
 
   .panel { background: var(--card); border: 1px solid var(--line);
-           border-radius: 10px; padding: 24px; margin-bottom: 20px; }
-  .panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .09em;
-              color: var(--muted); margin: 0 0 14px; font-weight: 700; }
+           border-radius: 10px; padding: 22px 24px; margin-bottom: 18px; }
+  .panel h2 { font-size: 17px; margin: 0 0 4px; }
+  .panel .lede { color: var(--muted); font-size: 15px; margin: 0 0 16px; }
 
-  /* quiz picker */
-  .quiz {
-    display: flex; gap: 14px; align-items: center; width: 100%; text-align: left;
-    padding: 14px 16px; margin-bottom: 8px; cursor: pointer; font: inherit;
-    border: 1px solid var(--line); border-radius: 8px; background: #fff;
-    color: var(--ink);
-  }
-  .quiz:hover { border-color: var(--accent); }
-  .quiz.picked { background: var(--accent-soft); border-color: var(--accent); }
+  .back { background: none; border: 0; font: inherit; color: var(--accent);
+          font-weight: 600; cursor: pointer; padding: 0 0 12px; }
+
+  /* search + quiz list */
+  .search { width: 100%; font: inherit; padding: 11px 14px; margin-bottom: 4px;
+            border: 1px solid var(--line); border-radius: 7px; background: #fff;
+            color: var(--ink); }
+  .listhead { display: flex; padding: 12px 14px 8px; font-size: 12px;
+              text-transform: uppercase; letter-spacing: .07em; color: var(--muted);
+              font-weight: 700; border-bottom: 1px solid var(--line); }
+  .listhead .when { margin-left: auto; }
+  .quiz { display: flex; gap: 14px; align-items: center; width: 100%; text-align: left;
+          padding: 14px; cursor: pointer; font: inherit; border: 0;
+          border-bottom: 1px solid var(--line-soft); background: none; color: var(--ink); }
+  .quiz:hover { background: var(--accent-soft); }
   .quiz .name { font-weight: 600; }
-  .quiz .count { margin-left: auto; color: var(--muted); font-size: 14.5px;
-                 font-variant-numeric: tabular-nums; }
+  .quiz .count { color: var(--muted); font-size: 14px; }
+  .quiz .when { margin-left: auto; color: var(--muted); font-size: 14px;
+                white-space: nowrap; }
 
-  /* the launch dialog */
-  .cols { display: grid; gap: 30px; }
-  @media (min-width: 720px) { .cols { grid-template-columns: 1fr 1fr; } }
+  /* options */
+  .cols { display: grid; gap: 28px; }
+  @media (min-width: 700px) { .cols { grid-template-columns: 1fr 1fr; } }
+  .cols h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .09em;
+             color: var(--muted); margin: 0 0 12px; }
 
-  .mode {
-    display: block; width: 100%; text-align: left; font: inherit; cursor: pointer;
-    border: 1px solid var(--line); border-radius: 9px; padding: 16px 18px;
-    margin-bottom: 10px; background: #fff; color: var(--ink);
-  }
+  .mode { display: block; width: 100%; text-align: left; font: inherit; cursor: pointer;
+          border: 1px solid var(--line); border-radius: 9px; padding: 15px 17px;
+          margin-bottom: 10px; background: #fff; color: var(--ink); }
   .mode:hover { border-color: var(--accent); }
   .mode.picked { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
   .mode .top { display: flex; align-items: center; gap: 10px; }
   .mode .dot { width: 17px; height: 17px; border-radius: 50%; flex: none;
                border: 2px solid var(--line); }
-  .mode.picked .dot { border-color: var(--accent); background:
-               radial-gradient(circle, var(--accent) 0 45%, #fff 46%); }
+  .mode.picked .dot { border-color: var(--accent);
+               background: radial-gradient(circle, var(--accent) 0 45%, #fff 46%); }
   .mode .label { font-weight: 700; }
-  .mode .desc { color: var(--muted); font-size: 14.5px; margin-top: 8px;
-                line-height: 1.45; }
+  .mode .desc { color: var(--muted); font-size: 14.5px; margin-top: 7px; line-height: 1.45; }
 
-  .toggle { display: flex; align-items: center; gap: 14px; padding: 12px 0;
+  .toggle { display: flex; align-items: center; gap: 14px; padding: 11px 0;
             border-bottom: 1px solid var(--line-soft); }
   .toggle:last-of-type { border-bottom: 0; }
   .toggle .name { flex: 1; }
   .toggle .name small { display: block; color: var(--muted); font-size: 13.5px; }
-  .switch { position: relative; width: 46px; height: 26px; flex: none;
-            border: 0; border-radius: 13px; background: var(--line);
-            cursor: pointer; padding: 0; transition: background .15s; }
-  .switch::after { content: ""; position: absolute; top: 3px; left: 3px;
-                   width: 20px; height: 20px; border-radius: 50%; background: #fff;
+  .switch { position: relative; width: 46px; height: 26px; flex: none; border: 0;
+            border-radius: 13px; background: var(--line); cursor: pointer; padding: 0; }
+  .switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px;
+                   height: 20px; border-radius: 50%; background: #fff;
                    transition: transform .15s; }
   .switch[aria-checked="true"] { background: var(--accent); }
   .switch[aria-checked="true"]::after { transform: translateX(20px); }
@@ -77,51 +85,43 @@
   .switch:focus-visible, button:focus-visible, input:focus-visible,
   select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 
-  .fixed-note { margin-top: 16px; padding: 12px 14px; border-radius: 7px;
+  .fixed-note { margin-top: 14px; padding: 12px 14px; border-radius: 7px;
                 background: var(--ground); color: var(--muted); font-size: 14px; }
 
   .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end;
-         margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--line-soft); }
+         margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line-soft); }
   label.field { display: block; font-size: 13.5px; font-weight: 600; }
   label.field span { display: block; margin-bottom: 6px; }
-  input[type=text], select {
-    font: inherit; padding: 11px 13px; border: 1px solid var(--line);
-    border-radius: 7px; background: #fff; color: var(--ink); min-width: 170px;
-  }
+  input[type=text] { font: inherit; padding: 11px 13px; border: 1px solid var(--line);
+                     border-radius: 7px; background: #fff; color: var(--ink); width: 160px; }
   #code { text-transform: uppercase; letter-spacing: .1em; font-weight: 600; }
   .grow { flex: 1 1 auto; }
-
   button.go { font: inherit; font-size: 17px; font-weight: 700; cursor: pointer;
-              border: 0; border-radius: 8px; padding: 14px 32px;
+              border: 0; border-radius: 8px; padding: 13px 30px;
               background: var(--accent); color: #fff; }
   button.go:disabled { opacity: .45; cursor: default; }
+  button.quiet { font: inherit; font-weight: 600; cursor: pointer; padding: 10px 18px;
+                 border-radius: 7px; border: 1px solid var(--line); background: #fff;
+                 color: var(--ink); }
 
   .error { color: var(--bad); font-weight: 600; margin-top: 14px; }
 
-  /* result */
-  .launched { text-align: center; padding: 30px 24px; }
-  .bigcode { font: 700 44px/1 ui-monospace, Consolas, monospace;
-             letter-spacing: .14em; margin: 14px 0 6px; color: var(--accent); }
-  .launched .sub { color: var(--muted); }
+  /* room busy */
+  .busy { background: var(--warn-bg); border-color: #e8d9ae; }
+  .busy h2 { color: var(--warn); }
+  .busy .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+
+  /* launched */
+  .launched { text-align: center; }
+  .bigcode { font: 700 44px/1 ui-monospace, Consolas, monospace; letter-spacing: .14em;
+             margin: 12px 0 6px; color: var(--accent); }
   .links { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;
-           margin-top: 24px; }
-  a.btn { text-decoration: none; font-weight: 600; padding: 12px 22px;
-          border-radius: 7px; border: 1px solid var(--line); color: var(--ink);
-          background: #fff; }
+           margin-top: 22px; }
+  a.btn { text-decoration: none; font-weight: 600; padding: 12px 22px; border-radius: 7px;
+          border: 1px solid var(--line); color: var(--ink); background: #fff; }
   a.btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
 
-  /* running sessions */
-  table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line-soft);
-           font-size: 15px; }
-  th { font-size: 12px; text-transform: uppercase; letter-spacing: .07em;
-       color: var(--muted); }
-  td.code { font-family: ui-monospace, Consolas, monospace; font-weight: 600;
-            letter-spacing: .08em; }
-  .pill { font-size: 11.5px; font-weight: 700; letter-spacing: .05em;
-          text-transform: uppercase; padding: 3px 8px; border-radius: 3px;
-          background: var(--ground); color: var(--muted); }
-  .empty { color: var(--muted); padding: 10px 0; }
+  .empty { color: var(--muted); padding: 14px 0; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -129,27 +129,48 @@
 <div class="wrap">
 
   <header>
-    <h1>Launch a Test</h1>
-    <span class="who" id="who"></span>
+    <h1 id="heading">Launch a Test</h1>
+    <span>
+      <select id="room" aria-label="Room"></select>
+      <span class="who" id="who"></span>
+    </span>
   </header>
 
   <div id="app" hidden>
 
-    <!-- 1. which quiz ------------------------------------------------- -->
-    <section class="panel">
-      <h2>Quiz</h2>
+    <!-- the room already has a test running --------------------------- -->
+    <section class="panel busy" id="busy" hidden>
+      <h2 id="busy-title"></h2>
+      <p class="lede" id="busy-lede"></p>
+      <div class="actions">
+        <a class="btn primary" id="busy-board" target="_blank" rel="noopener">Open the live board</a>
+        <button class="quiet" id="busy-close" type="button">Close this test</button>
+      </div>
+    </section>
+
+    <!-- 1. pick a quiz ------------------------------------------------ -->
+    <section class="panel" id="pick">
+      <h2 id="pick-title">Which quiz?</h2>
+      <p class="lede">Choose a quiz to launch, then set how it runs.</p>
+      <input type="search" class="search" id="search" placeholder="Search your quizzes"
+             autocomplete="off" spellcheck="false">
+      <div class="listhead"><span>Name</span><span class="when">Modified</span></div>
       <div id="quizzes"></div>
     </section>
 
     <!-- 2. how it runs ------------------------------------------------ -->
     <section class="panel" id="setup" hidden>
+      <button class="back" id="back" type="button">&larr; Choose a different quiz</button>
+      <h2 id="setup-title"></h2>
+      <p class="lede" id="setup-lede"></p>
+
       <div class="cols">
         <div>
-          <h2>Delivery Method</h2>
+          <h3>Delivery Method</h3>
           <div id="modes"></div>
         </div>
         <div>
-          <h2>Settings</h2>
+          <h3>Settings</h3>
           <div id="toggles"></div>
           <p class="fixed-note">
             Students always sign in with their student number from your roster,
@@ -163,32 +184,21 @@
           <span>Class code</span>
           <input type="text" id="code" maxlength="12" autocomplete="off" spellcheck="false">
         </label>
-        <label class="field">
-          <span>Room</span>
-          <select id="room"></select>
-        </label>
         <span class="grow"></span>
         <button class="go" id="launch" type="button">Launch</button>
       </div>
       <p class="error" id="error" hidden></p>
     </section>
 
-    <!-- 3. it is running ---------------------------------------------- -->
+    <!-- 3. running ----------------------------------------------------- -->
     <section class="panel launched" id="result" hidden>
-      <h2 style="margin-bottom:2px">Test is open</h2>
-      <p class="sub" id="result-title"></p>
+      <h2>Test is open</h2>
+      <p class="lede" id="result-title"></p>
       <div class="bigcode" id="result-code"></div>
-      <p class="sub">Students go to this site and enter that code with their student number.</p>
+      <p class="lede">Students go to this site and enter that code with their student number.</p>
       <div class="links">
         <a class="btn primary" id="board-link" target="_blank" rel="noopener">Open the live board</a>
-        <a class="btn" href="#" id="again">Launch another</a>
       </div>
-    </section>
-
-    <!-- running now ---------------------------------------------------- -->
-    <section class="panel">
-      <h2>Recent tests</h2>
-      <div id="sessions"></div>
     </section>
 
   </div>
@@ -209,16 +219,10 @@
     return;
   }
 
-  // Defaults match what a graded test usually wants. show_question_feedback is
-  // handled specially: open navigation cannot have it, so the switch is locked
-  // off rather than silently ignored.
   const chosen = {
-    quizId: null,
-    mode: "sequential",
-    shuffleQuestions: true,
-    shuffleChoices: true,
-    showQuestionFeedback: true,
-    showFinalScore: false,
+    quizId: null, quizTitle: "", mode: "sequential",
+    shuffleQuestions: true, shuffleChoices: true,
+    showQuestionFeedback: true, showFinalScore: false,
   };
 
   const SWITCHES = [
@@ -230,13 +234,16 @@
   ];
 
   let data = null;
+  let roomId = null;
 
-  async function api(path, options) {
+  const api = async (path, options) => {
     const res = await fetch(path, options);
     const body = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(body.error || "Something went wrong.");
+    if (!res.ok) { const e = new Error(body.error || "Something went wrong."); e.body = body; throw e; }
     return body;
-  }
+  };
+
+  const room = () => data.rooms.find((r) => String(r.id) === String(roomId)) ?? null;
 
   function randomCode() {
     const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";   // no I or O: they read as 1 and 0
@@ -244,19 +251,83 @@
       letters[Math.floor(Math.random() * letters.length)]).join("");
   }
 
+  function ago(iso) {
+    const then = new Date((iso || "").replace(" ", "T") + "Z");
+    if (Number.isNaN(then.getTime())) return "";
+    const mins = Math.max(0, Math.round((Date.now() - then.getTime()) / 60000));
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins} minute${mins === 1 ? "" : "s"} ago`;
+    const hours = Math.round(mins / 60);
+    if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+    const days = Math.round(hours / 24);
+    if (days < 31) return `${days} day${days === 1 ? "" : "s"} ago`;
+    const months = Math.round(days / 30);
+    return `${months} month${months === 1 ? "" : "s"} ago`;
+  }
+
   // --- rendering -----------------------------------------------------------
+
+  function renderRooms() {
+    const select = $("room");
+    select.textContent = "";
+    if (!data.rooms.length) {
+      const option = document.createElement("option");
+      option.textContent = "No rooms yet";
+      select.append(option);
+      select.disabled = true;
+      return;
+    }
+    for (const r of data.rooms) {
+      const option = document.createElement("option");
+      option.value = r.id;
+      option.textContent = r.openSession ? `${r.name} — in use` : r.name;
+      select.append(option);
+    }
+    if (roomId == null) roomId = data.rooms[0].id;
+    select.value = roomId;
+  }
+
+  /**
+   * A room runs one test at a time. When one is already open the quiz list is
+   * put away entirely rather than left clickable and then refused -- the
+   * decision to make is close it or go and watch it.
+   */
+  function renderRoomState() {
+    const current = room();
+    $("heading").textContent = current ? `Launch Quiz in ${current.name}` : "Launch a Test";
+
+    const open = current?.openSession;
+    $("busy").hidden = !open;
+    $("pick").hidden = !!open;
+    $("setup").hidden = true;
+    $("result").hidden = true;
+
+    if (open) {
+      $("busy-title").textContent = `${current.name} already has a test open`;
+      $("busy-lede").textContent =
+        `"${open.title}" is running on code ${open.joinCode}. ` +
+        `Close it before launching another.`;
+      $("busy-board").href = open.boardUrl;
+    }
+  }
 
   function renderQuizzes() {
     const host = $("quizzes");
+    const term = $("search").value.trim().toLowerCase();
     host.textContent = "";
-    if (!data.quizzes.length) {
-      host.innerHTML = '<p class="empty">No quizzes yet. Import one with scripts/import.js.</p>';
+
+    const matches = data.quizzes.filter((q) => q.title.toLowerCase().includes(term));
+    if (!matches.length) {
+      host.innerHTML = data.quizzes.length
+        ? '<p class="empty">Nothing matches that.</p>'
+        : '<p class="empty">No quizzes yet. Import one with scripts/import.js.</p>';
       return;
     }
-    for (const quiz of data.quizzes) {
+
+    for (const quiz of matches) {
       const button = document.createElement("button");
       button.type = "button";
-      button.className = "quiz" + (chosen.quizId === quiz.id ? " picked" : "");
+      button.className = "quiz";
 
       const name = document.createElement("span");
       name.className = "name";
@@ -266,14 +337,24 @@
       count.className = "count";
       count.textContent = `${quiz.questions} question${quiz.questions === 1 ? "" : "s"}`;
 
-      button.append(name, count);
+      const when = document.createElement("span");
+      when.className = "when";
+      when.textContent = ago(quiz.updated_at);
+
+      button.append(name, count, when);
       button.addEventListener("click", () => {
         chosen.quizId = quiz.id;
-        $("result").hidden = true;
+        chosen.quizTitle = quiz.title;
+        $("setup-title").textContent = quiz.title;
+        $("setup-lede").textContent =
+          `${quiz.questions} questions, launching in ${room().name}.`;
+        $("code").value = randomCode();
+        $("pick").hidden = true;
         $("setup").hidden = false;
-        if (!$("code").value) $("code").value = randomCode();
-        renderQuizzes();
-        $("setup").scrollIntoView({ behavior: "smooth", block: "nearest" });
+        $("error").hidden = true;
+        renderModes();
+        renderToggles();
+        window.scrollTo({ top: 0, behavior: "smooth" });
       });
       host.append(button);
     }
@@ -313,7 +394,6 @@
   function renderToggles() {
     const host = $("toggles");
     host.textContent = "";
-
     for (const [key, label, hint] of SWITCHES) {
       // Open navigation cannot show feedback: a student who saw right or wrong
       // would just go back and change the answer.
@@ -339,80 +419,50 @@
       sw.setAttribute("aria-checked", String(value));
       sw.setAttribute("aria-label", label);
       sw.disabled = locked;
-      sw.addEventListener("click", () => {
-        chosen[key] = !chosen[key];
-        renderToggles();
-      });
+      sw.addEventListener("click", () => { chosen[key] = !chosen[key]; renderToggles(); });
 
       row.append(name, sw);
       host.append(row);
     }
   }
 
-  function renderRooms() {
-    const select = $("room");
-    select.textContent = "";
-    const none = document.createElement("option");
-    none.value = "";
-    none.textContent = data.rooms.length ? "Anyone with the code" : "No rooms yet";
-    select.append(none);
-    for (const room of data.rooms) {
-      const option = document.createElement("option");
-      option.value = room.id;
-      option.textContent = `${room.name} (${room.students})`;
-      select.append(option);
-    }
-  }
+  // --- actions -------------------------------------------------------------
 
-  function renderSessions() {
-    const host = $("sessions");
-    host.textContent = "";
-    if (!data.sessions.length) {
-      host.innerHTML = '<p class="empty">Nothing launched yet.</p>';
-      return;
-    }
-    const table = document.createElement("table");
-    table.innerHTML =
-      "<thead><tr><th>Code</th><th>Quiz</th><th>Room</th><th>Mode</th>" +
-      "<th>Joined</th><th></th></tr></thead>";
-    const body = document.createElement("tbody");
+  $("room").addEventListener("change", () => {
+    roomId = $("room").value;
+    renderRoomState();
+    renderQuizzes();
+  });
 
-    for (const s of data.sessions) {
-      const tr = document.createElement("tr");
-      const cells = [
-        ["code", s.joinCode],
-        ["", s.title],
-        ["", s.section || "—"],
-        ["", s.delivery === "open" ? "Open Navigation" : "Instant Feedback"],
-        ["", `${s.joined}`],
-      ];
-      for (const [cls, text] of cells) {
-        const td = document.createElement("td");
-        if (cls) td.className = cls;
-        td.textContent = text;
-        tr.append(td);
-      }
-      const last = document.createElement("td");
-      const link = document.createElement("a");
-      link.href = s.boardUrl;
-      link.target = "_blank";
-      link.rel = "noopener";
-      link.textContent = "Live board";
-      last.append(link);
-      if (s.state !== "open") {
-        const pill = document.createElement("span");
-        pill.className = "pill";
-        pill.textContent = s.state;
-        last.append(" ", pill);
-      }
-      tr.append(last);
-      body.append(tr);
-    }
-    table.append(body);
-    host.append(table);
-  }
+  $("search").addEventListener("input", renderQuizzes);
 
-  // --- launching -----------------------------------------------------------
+  $("back").addEventListener("click", () => {
+    $("setup").hidden = true;
+    $("pick").hidden = false;
+    $("search").focus();
+  });
+
+  $("busy-close").addEventListener("click", async () => {
+    const open = room()?.openSession;
+    if (!open) return;
+    const button = $("busy-close");
+    button.disabled = true;
+    button.textContent = "Closing…";
+    try {
+      await api(`/api/teacher/${encodeURIComponent(token)}/close`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sessionId: open.id }),
+      });
+      await load();
+    } catch (err) {
+      $("fatal").textContent = err.message;
+      $("fatal").hidden = false;
+    } finally {
+      button.disabled = false;
+      button.textContent = "Close this test";
+    }
+  });
 
   $("launch").addEventListener("click", async () => {
     const button = $("launch");
@@ -427,19 +477,18 @@
         body: JSON.stringify({
           ...chosen,
           joinCode: $("code").value.trim().toUpperCase(),
-          sectionId: $("room").value || null,
+          sectionId: roomId,
         }),
       });
-
-      $("result-title").textContent = `${result.title} — ${result.questions} questions`;
+      $("result-title").textContent =
+        `${result.title} — ${result.questions} questions in ${result.room}`;
       $("result-code").textContent = result.joinCode;
       $("board-link").href = result.boardUrl;
-      $("setup").hidden = true;
-      $("result").hidden = false;
-      $("code").value = "";
-      chosen.quizId = null;
       await load();
-      $("result").scrollIntoView({ behavior: "smooth", block: "nearest" });
+      $("busy").hidden = true;      // show the code, not the "already open" panel
+      $("pick").hidden = true;
+      $("result").hidden = false;
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
       error.textContent = err.message;
       error.hidden = false;
@@ -449,22 +498,14 @@
     }
   });
 
-  $("again").addEventListener("click", (event) => {
-    event.preventDefault();
-    $("result").hidden = true;
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  });
-
   // --- start ---------------------------------------------------------------
 
   async function load() {
     data = await api(`/api/teacher/${encodeURIComponent(token)}`);
-    $("who").textContent = data.teacher.name;
-    renderQuizzes();
-    renderModes();
-    renderToggles();
+    $("who").textContent = " " + data.teacher.name;
     renderRooms();
-    renderSessions();
+    renderRoomState();
+    renderQuizzes();
     $("app").hidden = false;
   }
 

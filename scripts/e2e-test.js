@@ -15,6 +15,7 @@ import { DatabaseSync } from "node:sqlite";
 
 const BASE = process.env.BASE ?? "http://localhost:8787";
 const CODE = process.env.CODE ?? "HEAT1";
+const OPEN = process.env.OPEN_CODE ?? "OPEN1";
 const DB = process.env.DB_PATH ?? "classroom.db";
 
 let failures = 0;
@@ -35,9 +36,39 @@ async function post(path, body) {
 
 // Start from a clean slate so the suite can be run repeatedly. Only attempts
 // and their answers are cleared -- the roster and the questions stay put.
+//
+// The two sessions it needs are also reopened, so running the suite does not
+// depend on what was last done by hand in the launch screen.
 {
   const database = new DatabaseSync(DB);
   database.exec("DELETE FROM events; DELETE FROM responses; DELETE FROM attempts;");
+
+  const reopened = database
+    .prepare(`UPDATE sessions SET state = 'open' WHERE join_code IN (?, ?)`)
+    .run(CODE, OPEN);
+  if (reopened.changes < 2) {
+    console.error(
+      `
+This suite expects two sessions: ${CODE} (sequential) and ${OPEN} (open),
+` +
+      `in different rooms. Set them up with:
+
+` +
+      `  node scripts/import.js --teacher demo@school.test --roster fixtures/roster-demo.csv \
+` +
+      `      --section INTSCIA3 --quiz fixtures/heat_test.csv --code ${CODE} --mode sequential
+` +
+      `  node scripts/import.js --teacher demo@school.test --roster fixtures/roster-demo.csv \
+` +
+      `      --section INTSCIA4
+` +
+      `  node scripts/launch.js --teacher demo@school.test --quiz 1 \
+` +
+      `      --section INTSCIA4 --code ${OPEN} --mode open
+`
+    );
+    process.exit(1);
+  }
   database.close();
 }
 
@@ -192,7 +223,6 @@ check("the last answer submits the test automatically",
 // A different set of rules entirely: move about freely, change answers, and
 // hand in at the end -- but only once nothing is blank.
 
-const OPEN = process.env.OPEN_CODE ?? "OPEN1";
 const openJoin = await post("/api/join", { code: OPEN, studentNumber: "100002" });
 
 if (openJoin.status !== 200) {
@@ -262,7 +292,7 @@ if (openJoin.status !== 200) {
 {
   const modeDb = new DatabaseSync(DB);
   const sessions = modeDb.prepare(
-    `SELECT join_code, assessment_id, settings FROM sessions
+    `SELECT join_code, assessment_id, settings, section_id FROM sessions
       WHERE join_code IN (?, ?)`).all(CODE, OPEN);
   const questionCount = modeDb.prepare(`SELECT COUNT(*) AS n FROM questions`).get().n;
   const quizCount = modeDb.prepare(`SELECT COUNT(*) AS n FROM assessments`).get().n;
@@ -270,6 +300,8 @@ if (openJoin.status !== 200) {
 
   check("both sessions run the same quiz", sessions.length === 2 &&
     sessions[0].assessment_id === sessions[1].assessment_id);
+  check("and they are in different rooms, since a room runs one at a time",
+    sessions[0].section_id !== sessions[1].section_id);
   check("launching in a second mode did not duplicate the questions",
     quizCount === 1, `${quizCount} quiz(zes), ${questionCount} questions`);
 
@@ -309,12 +341,57 @@ if (openJoin.status !== 200) {
     check("an invented console link is refused",
       (await fetch(`${BASE}/api/teacher/not-a-real-token`)).status === 404);
 
+    check("rooms report what is already open in them",
+      console_.rooms.every((r) => "openSession" in r));
+
+    const busy = console_.rooms.find((r) => r.openSession);
+    check("a room already running a test says so", !!busy,
+      busy ? `${busy.name}: ${busy.openSession.joinCode}` : "none found");
+
+    // A room runs one test at a time. Launching into a busy one is refused,
+    // and the refusal points at what is already there.
+    if (busy) {
+      const clash = await post(`/api/teacher/${consoleToken}/launch`, {
+        quizId: console_.quizzes[0].id, joinCode: "BUSY1",
+        mode: "open", sectionId: busy.id,
+      });
+      check("cannot launch into a room that already has a test open",
+        clash.status === 409, clash.body.error);
+      check("the refusal names the test in the way", clash.body.openSession?.joinCode
+        === busy.openSession.joinCode);
+    }
+
+    check("a launch must name a room",
+      (await post(`/api/teacher/${consoleToken}/launch`, {
+        quizId: console_.quizzes[0].id, joinCode: "NOROOM", mode: "open",
+      })).status === 400);
+
     // Launching is where the mode is decided, so this is the important one.
+    // It needs a free room, so make one.
+    const freeRoomDb = new DatabaseSync(DB);
+    const teacherId = freeRoomDb
+      .prepare(`SELECT id FROM teachers WHERE email = ?`).get("demo@school.test").id;
+    let spare = freeRoomDb
+      .prepare(`SELECT id FROM sections WHERE teacher_id = ? AND name = ?`)
+      .get(teacherId, "SPARE");
+    if (!spare) {
+      freeRoomDb.prepare(`INSERT INTO sections (teacher_id, name) VALUES (?, ?)`)
+        .run(teacherId, "SPARE");
+      spare = freeRoomDb
+        .prepare(`SELECT id FROM sections WHERE teacher_id = ? AND name = ?`)
+        .get(teacherId, "SPARE");
+    }
+    // Leave the spare room free for the next run.
+    freeRoomDb.prepare(`UPDATE sessions SET state = 'closed' WHERE section_id = ?`)
+      .run(spare.id);
+    freeRoomDb.close();
+
     const code = "T" + Math.random().toString(36).slice(2, 7).toUpperCase();
     const launch = await post(`/api/teacher/${consoleToken}/launch`, {
       quizId: console_.quizzes[0].id,
       joinCode: code,
       mode: "open",
+      sectionId: spare.id,
       shuffleQuestions: true,
       shuffleChoices: true,
       showQuestionFeedback: true,     // asked for, but open mode cannot have it
@@ -327,15 +404,11 @@ if (openJoin.status !== 200) {
       launch.body.settings.show_question_feedback === false);
     check("other settings are honoured", launch.body.settings.show_final_score === true);
 
-    const clash = await post(`/api/teacher/${consoleToken}/launch`, {
-      quizId: console_.quizzes[0].id, joinCode: code, mode: "open",
-    });
-    check("a class code cannot be reused", clash.status === 400);
-
-    // And a student joining that code gets exactly what was launched.
-    const student = await post("/api/join", { code, studentNumber: "100004" });
-    check("students get the mode the console launched",
-      student.body.delivery === "open");
+    // And a student on that room's roster gets exactly what was launched.
+    // SPARE has no roster, so the code alone is not enough -- which is the
+    // point: a test belongs to a room.
+    const stranger = await post("/api/join", { code, studentNumber: "100004" });
+    check("a student not on that room's roster is refused", stranger.status === 404);
   }
 }
 

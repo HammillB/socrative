@@ -108,7 +108,8 @@ CREATE TABLE IF NOT EXISTS assessments (
   -- Defaults for this quiz. Copied onto a session when it is launched, and
   -- editing them never disturbs a test already running.
   settings    TEXT NOT NULL DEFAULT '{}',
-  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS assessment_items (
@@ -184,4 +185,11 @@ CREATE INDEX IF NOT EXISTS idx_sections_teacher    ON sections(teacher_id);
 CREATE INDEX IF NOT EXISTS idx_choices_question    ON choices(question_id);
 CREATE INDEX IF NOT EXISTS idx_items_assessment    ON assessment_items(assessment_id);
 CREATE INDEX IF NOT EXISTS idx_attempts_session    ON attempts(session_id);
+-- One test open per room at a time: the lookup that enforces it.
+CREATE INDEX IF NOT EXISTS idx_sessions_open        ON sessions(section_id, state);
+-- One room per name per teacher. Declared as an index rather than a table
+-- constraint so that running init.js applies it to an existing database too:
+-- without it a stray insert quietly makes a second "INTSCIA3" and half the
+-- class lands in the wrong one.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sections_name ON sections(teacher_id, name);
 CREATE INDEX IF NOT EXISTS idx_responses_attempt   ON responses(attempt_id);

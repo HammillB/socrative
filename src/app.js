@@ -232,6 +232,12 @@ export function createApp({ getDriver, staticHandler }) {
     const student = await db.findStudentByNumber(sql, session.teacher_id, studentNumber);
     if (!student) return fail(c, "That student number is not on this class roster.", 404);
 
+    // A test launched into a room is for that room's roster. Without this a
+    // student could join another class's test simply by knowing its code.
+    if (session.section_id && !(await db.isEnrolled(sql, student.id, session.section_id))) {
+      return fail(c, "That student number is not on this class roster.", 404);
+    }
+
     let attempt = await db.findAttempt(sql, session.id, student.id);
     let resumed = true;
     if (!attempt) {
@@ -457,7 +463,23 @@ export function createApp({ getDriver, staticHandler }) {
         description: MODE_DESCRIPTIONS[mode],
       })),
       quizzes: await db.listAssessments(sql, teacher.id),
-      rooms: await db.listSections(sql, teacher.id),
+      rooms: await Promise.all(
+        (await db.listSections(sql, teacher.id)).map(async (room) => {
+          const open = await db.findOpenSessionForSection(sql, teacher.id, room.id);
+          return {
+            ...room,
+            // A room runs one test at a time, so the screen needs to know
+            // what is already going on in each before offering to launch.
+            openSession: open && {
+              id: open.id,
+              title: open.title,
+              joinCode: open.join_code,
+              state: open.state,
+              boardUrl: `/live.html#${open.dashboard_token}`,
+            },
+          };
+        })
+      ),
       sessions: sessions.map((row) => ({
         id: row.id,
         title: row.title,
@@ -491,6 +513,29 @@ export function createApp({ getDriver, staticHandler }) {
       return fail(c, "A class code should be 3 to 12 letters or numbers.");
     }
 
+    // A test is launched into a room, and a room runs one at a time. Two open
+    // codes for the same class is how half a period ends up in the wrong test.
+    const sectionId = Number(body.sectionId);
+    if (!sectionId) return fail(c, "Choose which room this test is for.");
+
+    const rooms = await db.listSections(sql, teacher.id);
+    const room = rooms.find((r) => r.id === sectionId);
+    if (!room) return fail(c, "That room was not found.", 404);
+
+    const already = await db.findOpenSessionForSection(sql, teacher.id, sectionId);
+    if (already) {
+      return c.json({
+        error: `"${already.title}" is still open in ${room.name} on code ` +
+               `${already.join_code}. Close it before launching another.`,
+        openSession: {
+          id: already.id,
+          title: already.title,
+          joinCode: already.join_code,
+          boardUrl: `/live.html#${already.dashboard_token}`,
+        },
+      }, 409);
+    }
+
     let settings;
     try {
       settings = launchSettings({
@@ -508,7 +553,7 @@ export function createApp({ getDriver, staticHandler }) {
     try {
       await db.createSession(sql, teacher.id, {
         assessmentId: quiz.id,
-        sectionId: body.sectionId ? Number(body.sectionId) : null,
+        sectionId,
         joinCode,
         settings,
         dashboardToken,
@@ -522,11 +567,22 @@ export function createApp({ getDriver, staticHandler }) {
     return c.json({
       launched: true,
       title: quiz.title,
+      room: room.name,
       joinCode,
       questions: questions.length,
       settings,
       boardUrl: `/live.html#${dashboardToken}`,
     });
+  });
+
+  /** Close a test so the room is free for the next one. */
+  app.post("/api/teacher/:token/close", async (c) => {
+    const { teacher, error } = await requireTeacher(c);
+    if (error) return error;
+    const { sessionId } = await c.req.json().catch(() => ({}));
+    const closed = await db.closeSession(c.get("sql"), teacher.id, Number(sessionId));
+    if (!closed) return fail(c, "That test was not found.", 404);
+    return c.json({ closed: true });
   });
 
   app.get("/api/health", (c) => c.json({ ok: true }));

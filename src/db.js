@@ -138,6 +138,15 @@ export async function enroll(sql, studentId, sectionId) {
   );
 }
 
+/** Is this student on the roster for that room? */
+export async function isEnrolled(sql, studentId, sectionId) {
+  const row = await sql.get(
+    `SELECT 1 AS yes FROM enrollments WHERE student_id = ? AND section_id = ?`,
+    [studentId, sectionId]
+  );
+  return !!row;
+}
+
 /** Look a student up by the number they type in. Scoped to one teacher. */
 export async function findStudentByNumber(sql, teacherId, studentNumber) {
   return sql.get(
@@ -285,12 +294,41 @@ export async function findAssessment(sql, teacherId, assessmentId) {
 export async function listAssessments(sql, teacherId) {
   return sql.all(
     `SELECT a.id, a.title, a.created_at,
+            COALESCE(a.updated_at, a.created_at) AS updated_at,
             (SELECT COUNT(*) FROM assessment_items ai WHERE ai.assessment_id = a.id) AS questions
        FROM assessments a
       WHERE a.teacher_id = ?
-      ORDER BY a.created_at DESC`,
+      ORDER BY COALESCE(a.updated_at, a.created_at) DESC`,
     [teacherId]
   );
+}
+
+/**
+ * The test currently open in a room, if any.
+ *
+ * A room runs one test at a time -- the same rule Socrative has, and a sound
+ * one: two open codes for the same class is how half a period ends up in the
+ * wrong test.
+ */
+export async function findOpenSessionForSection(sql, teacherId, sectionId) {
+  return sql.get(
+    `SELECT s.id, s.join_code, s.state, s.dashboard_token, a.title
+       FROM sessions s
+       JOIN assessments a ON a.id = s.assessment_id
+      WHERE s.teacher_id = ? AND s.section_id = ? AND s.state <> 'closed'
+      ORDER BY s.created_at DESC
+      LIMIT 1`,
+    [teacherId, sectionId]
+  );
+}
+
+/** Close a session the teacher owns. Students can no longer join or answer. */
+export async function closeSession(sql, teacherId, sessionId) {
+  const { changes } = await sql.run(
+    `UPDATE sessions SET state = 'closed' WHERE id = ? AND teacher_id = ?`,
+    [sessionId, teacherId]
+  );
+  return changes > 0;
 }
 
 export async function findAttempt(sql, sessionId, studentId) {

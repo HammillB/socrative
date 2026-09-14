@@ -43,6 +43,13 @@ if (!columns.includes("settings")) {
   console.log("Migrated: sessions.settings added, back-filled from each quiz");
 }
 
+const quizColumns = database.prepare(`PRAGMA table_info(assessments)`).all().map((c) => c.name);
+if (!quizColumns.includes("updated_at")) {
+  database.exec(`ALTER TABLE assessments ADD COLUMN updated_at TEXT`);
+  database.exec(`UPDATE assessments SET updated_at = created_at WHERE updated_at IS NULL`);
+  console.log("Migrated: assessments.updated_at added");
+}
+
 const teacherColumns = database.prepare(`PRAGMA table_info(teachers)`).all().map((c) => c.name);
 if (!teacherColumns.includes("console_token")) {
   database.exec(`ALTER TABLE teachers ADD COLUMN console_token TEXT`);

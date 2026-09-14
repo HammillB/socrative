@@ -12,6 +12,9 @@
  *   --mode sequential   one at a time, final, feedback after each answer
  *   --mode open         Back and Next, changeable, hand in at the end
  *
+ * A room runs one test at a time. If one is already open there, this refuses
+ * unless you pass --close-open.
+ *
  * Also: --no-shuffle, --no-shuffle-answers, --show-score, --no-feedback
  */
 
@@ -19,7 +22,7 @@ import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import {
   nodeDriver, findTeacherByEmail, findAssessment, listAssessments,
-  upsertSection, createSession,
+  upsertSection, createSession, findOpenSessionForSection, closeSession,
 } from "../src/db.js";
 import { launchSettings, describeSettings, MODES } from "../src/delivery.js";
 
@@ -88,9 +91,24 @@ if (!MODES.includes(mode)) {
 }
 
 const sectionName = arg("section");
-const sectionId = sectionName
-  ? await upsertSection(sql, teacher.id, { name: sectionName })
-  : null;
+if (!sectionName) {
+  console.error("--section is required: a test is launched into a room.");
+  process.exit(1);
+}
+const sectionId = await upsertSection(sql, teacher.id, { name: sectionName });
+
+// A room runs one test at a time, the same rule the launch screen enforces.
+const already = await findOpenSessionForSection(sql, teacher.id, sectionId);
+if (already) {
+  if (flag("close-open")) {
+    await closeSession(sql, teacher.id, already.id);
+    console.log(`Closed "${already.title}" (${already.join_code}) in ${sectionName}.`);
+  } else {
+    console.error(`"${already.title}" is still open in ${sectionName} on code ${already.join_code}.`);
+    console.error(`Close it first, or re-run with --close-open.`);
+    process.exit(1);
+  }
+}
 
 const settings = launchSettings({
   mode,
