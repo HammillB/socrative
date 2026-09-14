@@ -242,7 +242,8 @@ export async function createAttempt(sql, { sessionId, studentId, seed, token }) 
 
 export async function findAttemptByToken(sql, token) {
   return sql.get(
-    `SELECT a.*, s.assessment_id, s.state AS session_state, asm.settings
+    `SELECT a.*, s.assessment_id, s.state AS session_state,
+            asm.settings, asm.title
        FROM attempts a
        JOIN sessions s    ON s.id   = a.session_id
        JOIN assessments asm ON asm.id = s.assessment_id

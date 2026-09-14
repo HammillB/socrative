@@ -388,14 +388,43 @@
     }
   });
 
-  // A reload mid-test picks straight back up.
-  if (restore()) {
+  /**
+   * A reload, or a closed lid, picks straight back up.
+   *
+   * The local copy gets us on screen immediately, but the server is asked to
+   * confirm it: the test may have been closed, already handed in, or answered
+   * further on another machine. Server answers win. If we are offline the
+   * local copy stands and syncs later.
+   */
+  async function resume() {
     $("join").hidden = true;
     $("test").hidden = false;
     $("bar").hidden = false;
-    preloadImages(paper.questions).then(render);
-    flush();
+    await preloadImages(paper.questions);
+    render();
+    await flush();
+
+    try {
+      const fresh = await post("/api/resume", { token: paper.token });
+      paper = { ...fresh, answers: { ...fresh.answers, ...paper.answers } };
+      for (const queued of pending) paper.answers[queued.questionId] = queued.choiceId;
+      save();
+      await preloadImages(paper.questions);
+      render();
+      setOffline(false);
+    } catch (err) {
+      // 404/409 mean this attempt is finished or gone: clear it and start over
+      // rather than leaving a student answering a test that no longer exists.
+      if (/handed in|closed|not found/i.test(err.message)) {
+        clearStore();
+        location.reload();
+        return;
+      }
+      setOffline(true);   // offline: carry on with what is on this device
+    }
   }
+
+  if (restore()) resume();
 })();
 </script>
 </body>

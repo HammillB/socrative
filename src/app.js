@@ -105,6 +105,45 @@ export function createApp({ getDriver, staticHandler }) {
   }
 
   /**
+   * Assemble the paper for one attempt: the questions in this student's
+   * order, plus every answer already recorded on the server.
+   */
+  async function paperFor(sql, { assessmentId, settingsJson, title, attempt, resumed }) {
+    const settings = JSON.parse(settingsJson || "{}");
+    const questions = await db.getAssessmentQuestions(sql, assessmentId);
+    const answers = await db.getResponses(sql, attempt.id);
+    return {
+      token: attempt.token,
+      title,
+      resumed,
+      questions: buildPaper(questions, attempt.seed, settings),
+      answers: Object.fromEntries(answers.map((a) => [a.question_id, a.choice_id])),
+    };
+  }
+
+  /**
+   * Pick up an attempt already in progress.
+   *
+   * This is what a dead Chromebook comes back to. The answers come from the
+   * server, not the browser, so a student can finish on a different machine
+   * entirely -- which is the case that actually matters when a device fails
+   * mid-test.
+   */
+  app.post("/api/resume", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const { attempt, error } = await requireAttempt(c, body);
+    if (error) return error;
+
+    return c.json(await paperFor(c.get("sql"), {
+      assessmentId: attempt.assessment_id,
+      settingsJson: attempt.settings,
+      title: attempt.title,
+      attempt,
+      resumed: true,
+    }));
+  });
+
+  /**
    * Join a test, or pick up where you left off.
    *
    * Rejoining is the normal case, not an error: a dropped connection, a closed
@@ -143,17 +182,13 @@ export function createApp({ getDriver, staticHandler }) {
       return fail(c, "You have already handed this test in.", 409);
     }
 
-    const settings = JSON.parse(session.settings || "{}");
-    const questions = await db.getAssessmentQuestions(sql, session.assessment_id);
-    const answers = await db.getResponses(sql, attempt.id);
-
-    return c.json({
-      token: attempt.token,
+    return c.json(await paperFor(sql, {
+      assessmentId: session.assessment_id,
+      settingsJson: session.settings,
       title: session.title,
+      attempt,
       resumed,
-      questions: buildPaper(questions, attempt.seed, settings),
-      answers: Object.fromEntries(answers.map((a) => [a.question_id, a.choice_id])),
-    });
+    }));
   });
 
   /** Save one answer. Called the instant a student picks a choice. */
