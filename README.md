@@ -6,7 +6,9 @@ Students join with a class code and their student number, take the test on a
 Chromebook, and it grades itself. Everything runs on your own database.
 
 Students are served **one question at a time**. They pick a letter, submit,
-and move on — answers are final and there is no going back.
+and are told straight away whether they were right — with the correct answer
+and an explanation when they were not. Answers are final and there is no
+going back.
 
 **Status: Phase 2, in progress.** The student side works end to end and the
 teacher's live results board is running. Tests are still set up from the
@@ -144,9 +146,21 @@ and keeps their selection, but they wait. An open-navigation test could cache
 the whole paper and carry on offline; a locked sequential one cannot. That is
 the cost of the mode, not a defect in it.
 
-**Correct answers never reach the browser during a test.** What a student is
-sent contains no `isCorrect` anywhere — checking the page source finds
-nothing.
+**Correct answers never reach the browser before they are earned.** What a
+student is sent contains no `isCorrect` anywhere — checking the page source
+finds nothing. The right answer arrives only in the reply to their own
+answer, once it is already committed.
+
+**Feedback names the letter the student saw.** Choices are shuffled per
+student, so the correct answer sits in a different position on every screen.
+Telling a student "the answer was B" when B was something else on their own
+page would be worse than saying nothing, so the letter is translated into
+their shuffled order before it is sent.
+
+**Explanations come from the spreadsheet.** Socrative's PDF export does not
+contain them, so the converter cannot either. Add an `Explanation` column to
+the CSV before importing and it is shown to students after they answer; the
+importer reports how many questions still have none.
 
 **Each attempt stores a `seed`** that determines question order, choice order
 and which family sibling the student saw. Their exact paper can be rebuilt
@@ -171,10 +185,11 @@ npm run dev      # in one terminal
 npm test         # in another
 ```
 
-30 checks covering the student flow and the board, including the three that
+34 checks covering the student flow and the board, including the ones that
 would be expensive to get wrong: that a dead device resumes on the right
-question, that going back or skipping ahead is refused by the server, and that
-a shuffled paper still maps to the right canonical letter.
+question, that going back and skipping ahead are refused by the server, that
+feedback names the letter the student actually saw, and that a shuffled paper
+still maps to the right canonical letter on the teacher's grid.
 
 `node scripts/demo-class.js` drives a fake class through a test if you want
 something to look at on the board.

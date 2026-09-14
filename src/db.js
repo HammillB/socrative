@@ -322,10 +322,25 @@ export async function saveResponse(sql, attempt, { questionId, choiceId, msSpent
   return { isCorrect: !!isCorrect, points: isCorrect ? onPaper.points : 0 };
 }
 
-/** The explanation for one question, fetched only after it has been answered. */
-export async function getExplanation(sql, questionId) {
-  const row = await sql.get(`SELECT explanation FROM questions WHERE id = ?`, [questionId]);
-  return row?.explanation ?? null;
+/**
+ * What to tell a student after they have answered: the right choice and why.
+ *
+ * Fetched only once the answer is committed, so nothing here can reach a
+ * student before they have made their choice.
+ */
+export async function getQuestionFeedback(sql, questionId) {
+  const question = await sql.get(
+    `SELECT explanation FROM questions WHERE id = ?`, [questionId]
+  );
+  const correct = await sql.get(
+    `SELECT id, text FROM choices WHERE question_id = ? AND is_correct = 1`,
+    [questionId]
+  );
+  return {
+    explanation: question?.explanation ?? null,
+    correctChoiceId: correct?.id ?? null,
+    correctText: correct?.text ?? null,
+  };
 }
 
 export async function submitAttempt(sql, attemptId) {

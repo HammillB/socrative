@@ -72,22 +72,55 @@ check("answer key is NOT in the payload",
 // --- 2. answering advances one at a time -----------------------------------
 
 const firstQuestionId = state.question.id;
-const firstChoiceId = state.question.choices[0].id;
+const shownChoices = state.question.choices;
+const rightChoiceId = keyOf.get(firstQuestionId);
+
+// Answer it deliberately WRONG, to exercise the feedback that matters.
+const wrongChoice = shownChoices.find((ch) => ch.id !== rightChoiceId);
 
 const answer1 = await post("/api/answer", {
-  token: state.token, questionId: firstQuestionId, choiceId: firstChoiceId,
+  token: state.token, questionId: firstQuestionId, choiceId: wrongChoice.id,
 });
 check("an answer is accepted", answer1.status === 200, answer1.body.error);
 check("it advances to question 2", answer1.body.number === 2);
 check("a different question follows", answer1.body.question.id !== firstQuestionId);
-check("no right/wrong is revealed by default", answer1.body.feedback === null);
+
+// --- 2a. feedback on a wrong answer ----------------------------------------
+
+const wrongFeedback = answer1.body.feedback;
+check("feedback is returned", !!wrongFeedback);
+check("a wrong answer is reported as incorrect", wrongFeedback.correct === false);
+check("the correct answer is given", !!wrongFeedback.correctText);
+check("an explanation is given", !!wrongFeedback.explanation);
+
+// The letter must be the one THIS student saw. Choices are shuffled per
+// student, so the position of the right answer differs between papers, and
+// naming the canonical letter would point at the wrong row on their screen.
+const expectedLetter = "ABCDEFGH"[shownChoices.findIndex((ch) => ch.id === rightChoiceId)];
+check("the letter matches the student's own shuffled order",
+  wrongFeedback.correctLetter === expectedLetter,
+  `told ${wrongFeedback.correctLetter}, saw it at ${expectedLetter}`);
 
 state = answer1.body;
+
+// --- 2b. feedback on a right answer ----------------------------------------
+
+const rightAnswer = await post("/api/answer", {
+  token: state.token,
+  questionId: state.question.id,
+  choiceId: keyOf.get(state.question.id),
+});
+check("a right answer is reported as correct", rightAnswer.body.feedback.correct === true);
+check("a student who was right is not told the answer they already gave",
+  rightAnswer.body.feedback.correctText === null &&
+  rightAnswer.body.feedback.correctLetter === null);
+
+state = rightAnswer.body;
 
 // --- 3. the lock ------------------------------------------------------------
 
 const goBack = await post("/api/answer", {
-  token: state.token, questionId: firstQuestionId, choiceId: firstChoiceId,
+  token: state.token, questionId: firstQuestionId, choiceId: wrongChoice.id,
 });
 check("cannot go back and re-answer", goBack.status === 409, goBack.body.error);
 
@@ -103,7 +136,7 @@ const skip = await post("/api/answer", {
 check("cannot skip ahead to a later question", skip.status === 409);
 
 const stillHere = await post("/api/resume", { token: state.token });
-check("refusals did not move the student", stillHere.body.number === 2);
+check("refusals did not move the student", stillHere.body.number === 3);
 
 // --- 4. the Chromebook dies -------------------------------------------------
 // Everything the browser held is gone. The student signs in on another machine
@@ -111,7 +144,7 @@ check("refusals did not move the student", stillHere.body.number === 2);
 
 const reJoin = await post("/api/join", { code: CODE, studentNumber: "100001" });
 check("can rejoin after losing the device", reJoin.status === 200, reJoin.body.error);
-check("resumes on the same question number", reJoin.body.number === 2);
+check("resumes on the same question number", reJoin.body.number === 3);
 check("resumes on the same question", reJoin.body.question.id === state.question.id);
 check("rejoin is flagged as resumed", reJoin.body.resumed === true);
 
@@ -142,7 +175,7 @@ check("the test completes", state.finished === true, `${state.answered} answered
 check("finishing records every answer", state.answered === state.total);
 
 const afterEnd = await post("/api/answer", {
-  token: state.token, questionId: firstQuestionId, choiceId: firstChoiceId,
+  token: state.token, questionId: firstQuestionId, choiceId: wrongChoice.id,
 });
 check("nothing can be answered once finished", afterEnd.status === 409);
 

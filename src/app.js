@@ -210,6 +210,30 @@ export function createApp({ getDriver, staticHandler }) {
   });
 
   /**
+   * What to show the student after they answer.
+   *
+   * The letter reported is the one THIS student saw. Choices are shuffled per
+   * student, so the correct answer sits in a different place on each screen --
+   * telling them "the answer was B" when B was something else on their own
+   * screen would be worse than saying nothing.
+   */
+  async function feedbackFor(sql, shownQuestion, wasCorrect) {
+    const { explanation, correctChoiceId, correctText } =
+      await db.getQuestionFeedback(sql, shownQuestion.id);
+
+    const shownIndex = shownQuestion.choices.findIndex((ch) => ch.id === correctChoiceId);
+
+    return {
+      correct: wasCorrect,
+      explanation,
+      // Only sent when they got it wrong -- a student who was right does not
+      // need to be told what they already chose.
+      correctLetter: wasCorrect ? null : (shownIndex >= 0 ? "ABCDEFGH"[shownIndex] : null),
+      correctText: wasCorrect ? null : correctText,
+    };
+  }
+
+  /**
    * Answer the current question and move on.
    *
    * The answer is final. The server checks that the question being answered is
@@ -262,10 +286,7 @@ export function createApp({ getDriver, staticHandler }) {
       // students finish at different times, telling them turns into telling
       // each other.
       feedback: settings.show_question_feedback
-        ? {
-            correct: graded.isCorrect,
-            explanation: await db.getExplanation(sql, body.questionId),
-          }
+        ? await feedbackFor(sql, before.question, graded.isCorrect)
         : null,
     });
   });

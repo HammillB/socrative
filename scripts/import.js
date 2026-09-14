@@ -126,16 +126,25 @@ if (quizPath) {
 
   assessmentId = await createAssessment(sql, teacher.id, {
     title,
-    settings: { shuffle_questions: true, shuffle_choices: true, show_final_score: false },
+    settings: {
+      shuffle_questions: true,
+      shuffle_choices: true,
+      show_question_feedback: true,   // tell them right/wrong after each answer
+      show_final_score: false,        // but not the overall score
+    },
   });
 
   const flagged = [], unshuffleable = [], skipped = [];
-  let position = 0;
+  let position = 0, withExplanation = 0;
 
   for (const row of rows) {
     const stem = pick(row, "Question");
     const correct = (pick(row, "Correct") || "").trim().toUpperCase();
     const review = pick(row, "Review");
+    // Optional. The PDF converter cannot produce these -- Socrative's export
+    // does not contain them -- so add a column called Explanation to the
+    // spreadsheet and they will be shown to students after they answer.
+    const explanation = pick(row, "Explanation", "Feedback", "Why");
 
     const choices = [];
     for (const letter of "ABCDEFGH") {
@@ -150,7 +159,8 @@ if (quizPath) {
       continue;
     }
 
-    const questionId = await createQuestion(sql, teacher.id, { stem, choices });
+    const questionId = await createQuestion(sql, teacher.id, { stem, choices, explanation });
+    if (explanation) withExplanation++;
     await addAssessmentItem(sql, teacher.id, assessmentId, questionId, position++);
 
     if (review) flagged.push(`Q${number}: ${review}`);
@@ -158,6 +168,13 @@ if (quizPath) {
   }
 
   console.log(`Quiz: "${title}" -- ${position} questions imported`);
+
+  if (withExplanation < position) {
+    console.log(`
+  ${position - withExplanation} of ${position} questions have no explanation.`);
+    console.log(`  Students will be told the correct answer but not why. To fix,`);
+    console.log(`  add an "Explanation" column to the spreadsheet and re-import.`);
+  }
 
   if (skipped.length) {
     console.log(`\n  NOT IMPORTED (${skipped.length}):`);
