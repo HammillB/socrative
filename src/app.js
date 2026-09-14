@@ -237,6 +237,28 @@ export function createApp({ getDriver, staticHandler }) {
     return c.json({ logged: true });
   });
 
+  // ---------------------------------------------------------------- teacher
+  //
+  // These carry the answer key, so they are reached only by a session's
+  // unguessable dashboard token -- never by the join code a whole class
+  // knows. Replaced by Google sign-in when that lands.
+
+  app.get("/api/live/:token", async (c) => {
+    const board = await db.getLiveBoard(c.get("sql"), c.req.param("token"));
+    if (!board) return fail(c, "No such dashboard.", 404);
+    return c.json(board);
+  });
+
+  app.post("/api/live/:token/state", async (c) => {
+    const { state } = await c.req.json().catch(() => ({}));
+    if (!["open", "paused", "closed"].includes(state)) {
+      return fail(c, "State must be open, paused or closed.");
+    }
+    const ok = await db.setSessionState(c.get("sql"), c.req.param("token"), state);
+    if (!ok) return fail(c, "No such dashboard.", 404);
+    return c.json({ state });
+  });
+
   app.get("/api/health", (c) => c.json({ ok: true }));
 
   if (staticHandler) app.get("*", staticHandler);

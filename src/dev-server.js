@@ -8,7 +8,7 @@
 
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
-import Database from "better-sqlite3";
+import { DatabaseSync } from "node:sqlite";
 import { existsSync } from "node:fs";
 import { createApp } from "./app.js";
 import { nodeDriver } from "./db.js";
@@ -21,11 +21,11 @@ if (!existsSync(DB_PATH)) {
   process.exit(1);
 }
 
-const database = new Database(DB_PATH);
+const database = new DatabaseSync(DB_PATH);
 // Write-ahead logging: readers never block the writer, which matters when
 // thirty students save answers while the dashboard polls.
-database.pragma("journal_mode = WAL");
-database.pragma("foreign_keys = ON");
+database.exec("PRAGMA journal_mode = WAL");
+database.exec("PRAGMA foreign_keys = ON");
 
 const driver = nodeDriver(database);
 

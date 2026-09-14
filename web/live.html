@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live Results</title>
+<style>
+  :root {
+    --ground: #f4f6f5; --card: #fff; --ink: #18211f; --muted: #66756f;
+    --line: #d5ded9; --line-soft: #e8eeeb; --accent: #0c6a5e;
+    --right: #10715f; --right-bg: #d9ece6;
+    --wrong: #a8491a; --wrong-bg: #f7e2d7;
+    --warn: #8a6508; --warn-bg: #fbf0d8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+
+  header {
+    background: var(--card); border-bottom: 1px solid var(--line);
+    padding: 14px 20px; display: flex; flex-wrap: wrap; gap: 14px;
+    align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 5;
+  }
+  h1 { font-size: 19px; margin: 0; }
+  .code { font: 600 14px/1 ui-monospace, Consolas, monospace; letter-spacing: .12em;
+          background: var(--ground); border: 1px solid var(--line);
+          padding: 7px 11px; border-radius: 6px; }
+  .counts { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  button {
+    font: inherit; font-weight: 600; cursor: pointer; padding: 8px 14px;
+    border-radius: 6px; border: 1px solid var(--line); background: var(--card);
+    color: var(--ink);
+  }
+  button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  .wrap { padding: 18px 20px 60px; }
+
+  .scroller { overflow: auto; background: var(--card);
+              border: 1px solid var(--line); border-radius: 8px; max-height: 76vh; }
+  table { border-collapse: separate; border-spacing: 0; }
+  th, td { border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
+
+  thead th {
+    position: sticky; top: 0; z-index: 3; background: var(--card);
+    border-bottom: 1px solid var(--line);
+    font-size: 12px; font-weight: 700; color: var(--muted);
+    padding: 9px 8px; text-align: center; min-width: 46px;
+  }
+  thead th.q { cursor: help; }
+  thead th.struggling { background: var(--warn-bg); color: var(--warn); }
+  th.name, td.name {
+    position: sticky; left: 0; z-index: 2; background: var(--card);
+    text-align: left; padding: 8px 14px; min-width: 190px;
+    border-right: 1px solid var(--line);
+  }
+  thead th.name { z-index: 4; }
+  th.pct, td.pct { padding: 8px 12px; text-align: right;
+                   font-variant-numeric: tabular-nums; min-width: 62px;
+                   border-right: 1px solid var(--line-soft); }
+
+  td.cell { text-align: center; font-weight: 700; padding: 8px 8px;
+            font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+  td.right { color: var(--right); background: var(--right-bg); }
+  td.wrong { color: var(--wrong); background: var(--wrong-bg); }
+  td.blank { color: #c3ccc8; }
+
+  .state { font-size: 11px; font-weight: 700; letter-spacing: .05em;
+           text-transform: uppercase; padding: 2px 7px; border-radius: 3px;
+           margin-left: 8px; vertical-align: 1px; }
+  .state.not_started { background: #eceeed; color: var(--muted); }
+  .state.in_progress { background: var(--warn-bg); color: var(--warn); }
+  .state.submitted   { background: var(--right-bg); color: var(--right); }
+  .sub { color: var(--muted); font-weight: 400; font-size: 13px; }
+
+  tfoot td { position: sticky; bottom: 0; background: var(--card);
+             border-top: 1px solid var(--line); font-weight: 700;
+             padding: 9px 6px; text-align: center; font-variant-numeric: tabular-nums; }
+  tfoot td.name { text-align: left; }
+  tfoot td.low { color: var(--wrong); }
+
+  .legend { margin-top: 14px; color: var(--muted); font-size: 13px;
+            display: flex; gap: 20px; flex-wrap: wrap; align-items: center; }
+  .swatch { display: inline-block; width: 15px; height: 15px; border-radius: 3px;
+            vertical-align: -3px; margin-right: 5px; }
+  .empty { padding: 60px 20px; text-align: center; color: var(--muted); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1 id="title">Live Results</h1>
+    <span class="counts" id="counts"></span>
+  </div>
+  <div class="controls">
+    <span class="code" id="code"></span>
+    <button id="toggle-names" class="on" type="button">Names</button>
+    <button id="toggle-answers" class="on" type="button">Answers</button>
+    <button id="toggle-correct" class="on" type="button">Right / wrong</button>
+    <button id="state" type="button">Pause</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="scroller"><table id="board"></table></div>
+  <div class="legend">
+    <span><span class="swatch" style="background:var(--right-bg)"></span>correct</span>
+    <span><span class="swatch" style="background:var(--wrong-bg)"></span>incorrect</span>
+    <span><span class="swatch" style="background:var(--warn-bg)"></span>class below 40% on this question</span>
+    <span id="stamp"></span>
+  </div>
+  <p class="empty" id="empty" hidden>Waiting for students to join.</p>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+
+  const token = location.hash.slice(1);
+  if (!token) {
+    document.body.innerHTML =
+      '<p class="empty">This link is missing its dashboard code.<br>' +
+      'Use the full link printed when you opened the test.</p>';
+    return;
+  }
+
+  const show = { names: true, answers: true, correct: true };
+  let board = null;
+
+  // --- polling -------------------------------------------------------------
+  // Three seconds is plenty for a class of thirty and it survives a Wi-Fi
+  // hiccup by simply succeeding next time. WebSockets would be faster and
+  // would need reconnection logic that has to be right on a school network.
+
+  async function refresh() {
+    try {
+      const res = await fetch(`/api/live/${encodeURIComponent(token)}`);
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "unavailable");
+      board = await res.json();
+      render();
+      $("stamp").textContent = "updated " + new Date().toLocaleTimeString();
+    } catch (err) {
+      $("stamp").textContent = "not updating — " + err.message;
+    }
+  }
+
+  // --- rendering -----------------------------------------------------------
+
+  function cellFor(student, question) {
+    const td = document.createElement("td");
+    const answer = student.answers[question.id];
+
+    if (!answer) {
+      td.className = "cell blank";
+      td.textContent = "·";
+      return td;
+    }
+    // The letter is the ORIGINAL letter for that choice -- not the letter this
+    // student happened to see. Every paper is shuffled; the board is not, so a
+    // column reads straight down and thirty students who picked the same wrong
+    // answer all show the same letter.
+    //
+    // The two toggles are independent, exactly as in Socrative:
+    //   responses + results -> "✓ C" green / "✕ A" red
+    //   responses only      -> "C", uncoloured (project it without giving away the key)
+    //   results only        -> "✓" / "✕", coloured, letters hidden
+    //   neither             -> answered or not, nothing more
+    const mark = answer.correct ? "✓" : "✕";
+    td.className = "cell" + (show.correct ? (answer.correct ? " right" : " wrong") : "");
+    td.textContent = show.answers && show.correct ? `${mark} ${answer.letter}`
+                   : show.answers                 ? answer.letter
+                   : show.correct                 ? mark
+                   : "●";
+    td.title = `${student.name} · Q${question.position + 1} · answered ${answer.letter}` +
+               (answer.correct ? " (correct)" : ` (correct answer: ${question.correctLetter})`);
+    return td;
+  }
+
+  function render() {
+    if (!board) return;
+    $("title").textContent = board.session.title;
+    $("code").textContent = "Code " + board.session.joinCode;
+    $("counts").textContent =
+      `${board.summary.joined} of ${board.summary.total} joined · ` +
+      `${board.summary.submitted} handed in`;
+    $("state").textContent = board.session.state === "open" ? "Pause" : "Reopen";
+    $("empty").hidden = board.students.length > 0;
+
+    const table = $("board");
+    table.textContent = "";
+
+    // header: questions in their ORIGINAL order, 1..N
+    const thead = table.createTHead();
+    const hrow = thead.insertRow();
+    const corner = document.createElement("th");
+    corner.className = "name";
+    corner.textContent = "Student";
+    hrow.append(corner);
+
+    const pct = document.createElement("th");
+    pct.className = "pct";
+    pct.textContent = "Correct";
+    pct.title = "Accuracy on the questions answered so far";
+    hrow.append(pct);
+
+    for (const question of board.questions) {
+      const th = document.createElement("th");
+      th.className = "q" + (question.struggling ? " struggling" : "");
+      th.textContent = question.position + 1;
+      th.title = `Q${question.position + 1}. ${question.stem}\n` +
+                 `Correct answer: ${question.correctLetter}\n` +
+                 (question.percent === null
+                    ? "Not answered yet"
+                    : `${question.correct} of ${question.answered} correct (${question.percent}%)`);
+      hrow.append(th);
+    }
+
+    // one row per student on the roster, including those who never joined
+    const tbody = table.createTBody();
+    for (const student of board.students) {
+      const tr = tbody.insertRow();
+
+      const name = document.createElement("td");
+      name.className = "name";
+      name.textContent = show.names ? student.name : student.number;
+      const state = document.createElement("span");
+      state.className = "state " + student.status;
+      state.textContent = student.status === "not_started" ? "not started"
+                        : student.status === "submitted" ? "handed in"
+                        : `on Q${(student.lastPosition ?? 0) + 1}`;
+      name.append(state);
+      tr.append(name);
+
+      const score = document.createElement("td");
+      score.className = "pct";
+      score.textContent = student.answered ? student.percent + "%" : "—";
+      score.title = `${student.correct} correct of ${student.answered} answered`
+                  + `
+${student.percentOfTest}% of the whole test so far`;
+      tr.append(score);
+
+      for (const question of board.questions) tr.append(cellFor(student, question));
+    }
+
+    // class total per question
+    const tfoot = table.createTFoot();
+    const frow = tfoot.insertRow();
+    const label = document.createElement("td");
+    label.className = "name";
+    label.textContent = `${board.summary.total}  Class Total`;
+    frow.append(label);
+    frow.insertCell().className = "pct";
+
+    for (const question of board.questions) {
+      const td = frow.insertCell();
+      td.textContent = question.percent === null ? "—" : question.percent + "%";
+      if (question.struggling) td.className = "low";
+      td.title = `Q${question.position + 1}: ${question.correct} of ${question.answered} correct`;
+    }
+  }
+
+  // --- controls ------------------------------------------------------------
+
+  function wireToggle(id, key) {
+    $(id).addEventListener("click", () => {
+      show[key] = !show[key];
+      $(id).classList.toggle("on", show[key]);
+      render();
+    });
+  }
+  wireToggle("toggle-names", "names");
+  wireToggle("toggle-answers", "answers");
+  wireToggle("toggle-correct", "correct");
+
+  $("state").addEventListener("click", async () => {
+    const next = board?.session.state === "open" ? "paused" : "open";
+    await fetch(`/api/live/${encodeURIComponent(token)}/state`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ state: next }),
+    });
+    refresh();
+  });
+
+  refresh();
+  setInterval(refresh, 3000);
+})();
+</script>
+</body>
+</html>

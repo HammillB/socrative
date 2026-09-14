@@ -15,8 +15,9 @@
  * so nothing is silently accepted that a human has not looked at.
  */
 
-import Database from "better-sqlite3";
+import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { basename } from "node:path";
 import {
   nodeDriver, findTeacherByEmail, upsertSection, upsertStudent, enroll,
@@ -74,9 +75,9 @@ if (!email) {
   process.exit(1);
 }
 
-const database = new Database(dbPath);
-database.pragma("journal_mode = WAL");
-database.pragma("foreign_keys = ON");
+const database = new DatabaseSync(dbPath);
+database.exec("PRAGMA journal_mode = WAL");
+database.exec("PRAGMA foreign_keys = ON");
 const sql = nodeDriver(database);
 
 const teacher = await findTeacherByEmail(sql, email);
@@ -176,10 +177,21 @@ if (quizPath) {
 
 const joinCode = arg("code");
 if (joinCode && assessmentId) {
-  await createSession(sql, teacher.id, { assessmentId, sectionId, joinCode });
-  console.log(`\nTest is open. Students go to the site and enter:`);
+  const sessionId = await createSession(sql, teacher.id, { assessmentId, sectionId, joinCode });
+
+  // The live board shows the answer key, so it gets its own unguessable link
+  // rather than being reachable by the join code the whole class knows.
+  const dashboardToken = randomUUID().replace(/-/g, "");
+  database
+    .prepare(`UPDATE sessions SET dashboard_token = ? WHERE id = ?`)
+    .run(dashboardToken, sessionId);
+
+  const host = arg("host", "http://localhost:8787");
+  console.log(`\nTest is open. Students go to ${host} and enter:`);
   console.log(`    class code      ${joinCode.toUpperCase()}`);
   console.log(`    student number  (their own)`);
+  console.log(`\nYour live board -- keep this link to yourself, it shows the answers:`);
+  console.log(`    ${host}/live.html#${dashboardToken}`);
 }
 
 database.close();

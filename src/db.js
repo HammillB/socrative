@@ -3,9 +3,9 @@
  *
  * That is the rule that keeps the app portable: `sql` below is a tiny driver
  * interface with three async methods, and there are two implementations --
- * better-sqlite3 for a local file, and Cloudflare D1 for production. The SQL
- * itself is identical, so moving between them is a deploy change rather than
- * a rewrite.
+ * Node's built-in SQLite for a local file, and Cloudflare D1 for production.
+ * The SQL itself is identical, so moving between them is a deploy change
+ * rather than a rewrite.
  *
  * Every function here takes teacherId and filters on it. Nothing in this file
  * reads content without scoping it to an owner.
@@ -13,7 +13,13 @@
 
 // ------------------------------------------------------------------ drivers
 
-/** Wrap a better-sqlite3 Database in the async interface used below. */
+/**
+ * Wrap a node:sqlite DatabaseSync in the async interface used below.
+ *
+ * node:sqlite ships with Node itself, so there is no native module to compile
+ * and nothing to rebuild when Node updates -- which is worth a great deal in a
+ * project that gets touched twice a year.
+ */
 export function nodeDriver(database) {
   return {
     async all(query, params = []) {
@@ -330,4 +336,176 @@ export async function scoreAttempt(sql, attempt) {
 
 export async function logEvent(sql, attemptId, kind) {
   await sql.run(`INSERT INTO events (attempt_id, kind) VALUES (?, ?)`, [attemptId, kind]);
+}
+
+// -------------------------------------------------------------- live board
+
+/**
+ * Everything the teacher's live grid needs, in CANONICAL order.
+ *
+ * This is the point of storing choice_id on a response rather than the letter
+ * the student saw. Each student's paper is shuffled -- different question
+ * order, different choice order -- but a choice has one permanent identity,
+ * and `choices.position` is its original place. So the board can show
+ * question 7 as question 7 for everyone, and report an answer as "D" if D is
+ * what it was when you wrote it, whatever letter that student saw on screen.
+ *
+ * Without that conversion the grid is unreadable: thirty students picking the
+ * same wrong answer would show up as thirty different letters.
+ */
+export async function getLiveBoard(sql, dashboardToken) {
+  const LETTERS = "ABCDEFGH";
+
+  const session = await sql.get(
+    `SELECT s.*, a.title, a.settings
+       FROM sessions s
+       JOIN assessments a ON a.id = s.assessment_id
+      WHERE s.dashboard_token = ?`,
+    [dashboardToken]
+  );
+  if (!session) return null;
+
+  // Questions in the order they were written, not the order anyone saw them.
+  const questions = await sql.all(
+    `SELECT ai.position, q.id, q.stem
+       FROM assessment_items ai
+       JOIN questions q ON q.id = ai.question_id
+      WHERE ai.assessment_id = ?
+      ORDER BY ai.position`,
+    [session.assessment_id]
+  );
+
+  // choice id -> its canonical letter, and each question's correct letter
+  const letterOf = new Map();
+  for (const question of questions) {
+    const choices = await sql.all(
+      `SELECT id, position, is_correct FROM choices WHERE question_id = ? ORDER BY position`,
+      [question.id]
+    );
+    for (const choice of choices) {
+      letterOf.set(choice.id, LETTERS[choice.position] ?? "?");
+      if (choice.is_correct) question.correctLetter = LETTERS[choice.position] ?? "?";
+    }
+    question.choiceCount = choices.length;
+  }
+
+  // The roster, so a student who never signed in still gets a row. Silence is
+  // information: an empty row is a student to walk over to.
+  const roster = session.section_id
+    ? await sql.all(
+        `SELECT st.id, st.student_number, st.first_name, st.last_name
+           FROM enrollments e
+           JOIN students st ON st.id = e.student_id
+          WHERE e.section_id = ? AND st.teacher_id = ?
+          ORDER BY st.last_name, st.first_name, st.student_number`,
+        [session.section_id, session.teacher_id]
+      )
+    : await sql.all(
+        `SELECT st.id, st.student_number, st.first_name, st.last_name
+           FROM attempts a
+           JOIN students st ON st.id = a.student_id
+          WHERE a.session_id = ?
+          ORDER BY st.last_name, st.first_name, st.student_number`,
+        [session.id]
+      );
+
+  const attempts = await sql.all(
+    `SELECT id, student_id, status, started_at, submitted_at FROM attempts WHERE session_id = ?`,
+    [session.id]
+  );
+  const attemptByStudent = new Map(attempts.map((a) => [a.student_id, a]));
+
+  const responses = attempts.length
+    ? await sql.all(
+        `SELECT r.attempt_id, r.question_id, r.choice_id, r.is_correct, r.answered_at
+           FROM responses r
+           JOIN attempts a ON a.id = r.attempt_id
+          WHERE a.session_id = ?
+          ORDER BY r.answered_at`,
+        [session.id]
+      )
+    : [];
+
+  const byAttempt = new Map();
+  for (const r of responses) {
+    if (!byAttempt.has(r.attempt_id)) byAttempt.set(r.attempt_id, []);
+    byAttempt.get(r.attempt_id).push(r);
+  }
+
+  const positionOf = new Map(questions.map((q) => [q.id, q.position]));
+
+  const students = roster.map((student) => {
+    const attempt = attemptByStudent.get(student.id);
+    const mine = attempt ? byAttempt.get(attempt.id) ?? [] : [];
+
+    const answers = {};
+    for (const r of mine) {
+      answers[r.question_id] = {
+        letter: letterOf.get(r.choice_id) ?? "?",
+        correct: !!r.is_correct,
+      };
+    }
+
+    const last = mine[mine.length - 1];
+    return {
+      id: student.id,
+      number: student.student_number,
+      name: [student.last_name, student.first_name].filter(Boolean).join(", ")
+            || student.student_number,
+      status: !attempt ? "not_started"
+            : attempt.status === "submitted" ? "submitted"
+            : "in_progress",
+      answers,
+      answered: mine.length,
+      // With Open Navigation a student roams, so "where they are" is the last
+      // question they touched rather than a cursor position.
+      lastPosition: last ? (positionOf.get(last.question_id) ?? null) : null,
+      correct: mine.filter((r) => r.is_correct).length,
+      // Accuracy on what they have answered so far -- not a fraction of the
+      // whole test. Mid-period, "8 of 8 right" is the useful fact; showing it
+      // as 32% because they are a third of the way through reads like a
+      // struggling student and would send you to the wrong desk.
+      percent: mine.length
+        ? Math.round((mine.filter((r) => r.is_correct).length / mine.length) * 100)
+        : null,
+      // What the score will be if they stop now, for the end of the period.
+      percentOfTest: questions.length
+        ? Math.round((mine.filter((r) => r.is_correct).length / questions.length) * 100)
+        : 0,
+    };
+  });
+
+  // Per-question difficulty, live. Anything the class is failing in real time
+  // is worth knowing before the period ends, not after marking.
+  for (const question of questions) {
+    const seen = students.filter((s) => s.answers[question.id]);
+    question.answered = seen.length;
+    question.correct = seen.filter((s) => s.answers[question.id].correct).length;
+    question.percent = seen.length ? Math.round((question.correct / seen.length) * 100) : null;
+    question.struggling = seen.length >= 3 && question.percent !== null && question.percent < 40;
+  }
+
+  return {
+    session: {
+      id: session.id,
+      title: session.title,
+      joinCode: session.join_code,
+      state: session.state,
+    },
+    questions,
+    students,
+    summary: {
+      joined: students.filter((s) => s.status !== "not_started").length,
+      submitted: students.filter((s) => s.status === "submitted").length,
+      total: students.length,
+    },
+  };
+}
+
+export async function setSessionState(sql, dashboardToken, state) {
+  const { changes } = await sql.run(
+    `UPDATE sessions SET state = ? WHERE dashboard_token = ?`,
+    [state, dashboardToken]
+  );
+  return changes > 0;
 }

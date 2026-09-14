@@ -7,7 +7,7 @@
  * teacher is only added if that email is not already present.
  */
 
-import Database from "better-sqlite3";
+import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
 import { nodeDriver, findTeacherByEmail, createTeacher } from "../src/db.js";
 
@@ -20,10 +20,17 @@ const dbPath = arg("db", "classroom.db");
 const email = arg("teacher");
 const name = arg("name", email);
 
-const database = new Database(dbPath);
-database.pragma("journal_mode = WAL");
+const database = new DatabaseSync(dbPath);
+database.exec("PRAGMA journal_mode = WAL");
 database.exec(readFileSync(new URL("../schema.sql", import.meta.url), "utf8"));
 console.log(`Schema applied to ${dbPath}`);
+
+// Small forward migrations, so an existing database is never thrown away.
+const columns = database.prepare(`PRAGMA table_info(sessions)`).all().map((c) => c.name);
+if (!columns.includes("dashboard_token")) {
+  database.exec(`ALTER TABLE sessions ADD COLUMN dashboard_token TEXT`);
+  console.log("Migrated: sessions.dashboard_token added");
+}
 
 if (email) {
   const sql = nodeDriver(database);

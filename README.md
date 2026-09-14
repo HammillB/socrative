@@ -13,7 +13,9 @@ for now tests are set up from the command line.
 
 ## What you need
 
-Node.js 20 or newer. Check with:
+Node.js 22.5 or newer — that is when SQLite became part of Node itself, which
+is why this project has no database to install and nothing to compile. Check
+with:
 
 ```bash
 node --version
@@ -60,6 +62,30 @@ npm run dev
 
 Then open <http://localhost:8787>, enter the class code and a student number
 from the roster.
+
+The import command also prints a **live board** link. Open it on your own
+screen during a test:
+
+```
+6 of 6 joined · 1 handed in
+
+Student                 Correct   1    2    3    4    5
+Bell, Aurora    ON Q17    100%   ✓A   ✓B   ·    ✓A   ✓D
+Chen, George    ON Q12     75%   ✓A   ✕E   ·    ✓A   ·
+6  Class Total                   100% 50%  —    100% 100%
+```
+
+Green is right, red is wrong, and the letter shown is the answer's **original**
+letter. Every student's paper is shuffled, so a choice sits somewhere different
+on each screen — the board undoes that, so a column reads straight down and
+thirty students who picked the same wrong answer all show the same letter.
+
+A question the class is failing in real time gets its column highlighted, which
+is worth knowing before the period ends rather than at marking.
+
+`Names`, `Answers` and `Right / wrong` toggle independently, so the board can be
+projected without giving away the key. **The board link contains the answer key
+— keep it to yourself.** The class code will not open it.
 
 ---
 
@@ -112,6 +138,25 @@ those are. Socrative will happily shuffle them into nonsense.
 
 **There is no password column.** Teachers sign in with their school Google
 account (Phase 2), so there are no credentials stored here to leak or reset.
+Until then the live board is reached by an unguessable per-session link.
+
+**No native dependencies.** SQLite comes from Node itself, so `npm install`
+pulls two small pure-JavaScript packages and there is nothing to rebuild when
+Node updates.
+
+## Tests
+
+```bash
+npm run dev      # in one terminal
+npm test         # in another
+```
+
+26 checks covering the student flow and the board, including the two that would
+be expensive to get wrong: that a dead device can be resumed with its answers
+intact, and that a shuffled paper still maps to the right canonical letter.
+
+`node scripts/demo-class.js` drives a fake class through a test if you want
+something to look at on the board.
 
 ## Next
 

@@ -8,10 +8,21 @@
  * Chromebook dying mid-test and the student finishing somewhere else.
  */
 
+import { DatabaseSync } from "node:sqlite";
+
 const BASE = process.env.BASE ?? "http://localhost:8787";
 const CODE = process.env.CODE ?? "HEAT1";
+const DB = process.env.DB_PATH ?? "classroom.db";
 
 let failures = 0;
+
+// Start from a clean slate so the suite can be run repeatedly. Only attempts
+// and their answers are cleared -- the roster and the questions stay put.
+{
+  const database = new DatabaseSync(DB);
+  database.exec("DELETE FROM events; DELETE FROM responses; DELETE FROM attempts;");
+  database.close();
+}
 
 function check(name, condition, detail = "") {
   const mark = condition ? "  ok  " : " FAIL ";
@@ -123,6 +134,50 @@ check("answers are locked after handing in", afterSubmit.status === 409);
 
 const rejoinAfter = await post("/api/join", { code: CODE, studentNumber: "100001" });
 check("cannot restart a handed-in test", rejoinAfter.status === 409);
+
+// --- 8. the teacher's live board -------------------------------------------
+
+const board_db = new DatabaseSync(DB);
+const dashboardToken =
+  board_db.prepare(`SELECT dashboard_token FROM sessions LIMIT 1`).get()?.dashboard_token;
+board_db.close();
+
+if (!dashboardToken) {
+  check("session has a dashboard token", false, "re-run scripts/import.js");
+} else {
+  const res = await fetch(`${BASE}/api/live/${dashboardToken}`);
+  const board = await res.json();
+  check("live board loads", res.status === 200, board.error);
+
+  check("board lists the whole roster, not only those who joined",
+    board.students.length >= 1);
+  check("questions are in their original order",
+    board.questions.every((q, i) => q.position === i));
+
+  // The property the board rests on. Papers are shuffled per student, so a
+  // choice sits in a different place on each screen -- but the board reports
+  // the letter that choice had when the question was written. Two students
+  // who answer the same question correctly must therefore show the same
+  // letter, and it must equal the key.
+  let inconsistent = 0, compared = 0;
+  for (const question of board.questions) {
+    const letters = new Set();
+    for (const student of board.students) {
+      const answer = student.answers[question.id];
+      if (answer?.correct) letters.add(answer.letter);
+    }
+    if (!letters.size) continue;
+    compared++;
+    if (letters.size > 1) inconsistent++;
+    else if ([...letters][0] !== question.correctLetter) inconsistent++;
+  }
+  check("correct answers map to one canonical letter matching the key",
+    inconsistent === 0, `${compared} question(s) compared, ${inconsistent} inconsistent`);
+
+  // A join code is known to the whole class; it must not open the board.
+  const leak = await fetch(`${BASE}/api/live/${CODE}`);
+  check("the join code does NOT open the board", leak.status === 404);
+}
 
 // ---------------------------------------------------------------------------
 

@@ -121,6 +121,10 @@ CREATE TABLE IF NOT EXISTS sessions (
   assessment_id  INTEGER NOT NULL REFERENCES assessments(id) ON DELETE CASCADE,
   section_id     INTEGER REFERENCES sections(id) ON DELETE SET NULL,
   join_code      TEXT NOT NULL UNIQUE,
+  -- Until teacher sign-in exists (Phase 2), the live board is reached by an
+  -- unguessable link rather than left open. The board contains the answer
+  -- key, so it must never be readable by anyone holding only a join code.
+  dashboard_token TEXT UNIQUE,
   state          TEXT NOT NULL DEFAULT 'open',   -- open | paused | closed
   created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
