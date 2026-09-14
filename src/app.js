@@ -9,6 +9,7 @@
 
 import { Hono } from "hono";
 import * as db from "./db.js";
+import { launchSettings, MODES, MODE_LABELS, MODE_DESCRIPTIONS } from "./delivery.js";
 
 // ------------------------------------------------------- deterministic order
 
@@ -425,6 +426,107 @@ export function createApp({ getDriver, staticHandler }) {
     const ok = await db.setSessionState(c.get("sql"), c.req.param("token"), state);
     if (!ok) return fail(c, "No such dashboard.", 404);
     return c.json({ state });
+  });
+
+  // ------------------------------------------------- the teacher's console
+  //
+  // Reached by an unguessable per-teacher link, the same interim arrangement
+  // as the live board, and replaced by Google sign-in. Everything here is
+  // scoped to the teacher that link belongs to: there is no request shape
+  // that reaches another teacher's quizzes.
+
+  async function requireTeacher(c) {
+    const teacher = await db.findTeacherByConsoleToken(c.get("sql"), c.req.param("token"));
+    if (!teacher) return { error: fail(c, "This console link was not recognised.", 404) };
+    return { teacher };
+  }
+
+  /** What the launch screen needs: quizzes, rooms, and what is already running. */
+  app.get("/api/teacher/:token", async (c) => {
+    const { teacher, error } = await requireTeacher(c);
+    if (error) return error;
+
+    const sql = c.get("sql");
+    const sessions = await db.listSessions(sql, teacher.id);
+
+    return c.json({
+      teacher: { name: teacher.display_name, email: teacher.email },
+      modes: MODES.map((mode) => ({
+        id: mode,
+        label: MODE_LABELS[mode],
+        description: MODE_DESCRIPTIONS[mode],
+      })),
+      quizzes: await db.listAssessments(sql, teacher.id),
+      rooms: await db.listSections(sql, teacher.id),
+      sessions: sessions.map((row) => ({
+        id: row.id,
+        title: row.title,
+        section: row.section,
+        joinCode: row.join_code,
+        state: row.state,
+        joined: row.joined,
+        created: row.created_at,
+        delivery: JSON.parse(row.settings || "{}").delivery ?? "sequential",
+        boardUrl: `/live.html#${row.dashboard_token}`,
+      })),
+    });
+  });
+
+  /** Launch a quiz. This is where the delivery mode is actually decided. */
+  app.post("/api/teacher/:token/launch", async (c) => {
+    const { teacher, error } = await requireTeacher(c);
+    if (error) return error;
+
+    const sql = c.get("sql");
+    const body = await c.req.json().catch(() => ({}));
+
+    const quiz = await db.findAssessment(sql, teacher.id, Number(body.quizId));
+    if (!quiz) return fail(c, "Choose a quiz to launch.", 404);
+
+    const questions = await db.getAssessmentQuestions(sql, quiz.id);
+    if (!questions.length) return fail(c, "That quiz has no questions in it yet.");
+
+    const joinCode = String(body.joinCode || "").trim().toUpperCase();
+    if (!/^[A-Z0-9]{3,12}$/.test(joinCode)) {
+      return fail(c, "A class code should be 3 to 12 letters or numbers.");
+    }
+
+    let settings;
+    try {
+      settings = launchSettings({
+        mode: body.mode,
+        shuffleQuestions: body.shuffleQuestions !== false,
+        shuffleChoices: body.shuffleChoices !== false,
+        showQuestionFeedback: body.showQuestionFeedback ?? null,
+        showFinalScore: body.showFinalScore === true,
+      });
+    } catch (err) {
+      return fail(c, err.message);
+    }
+
+    const dashboardToken = randomToken();
+    try {
+      await db.createSession(sql, teacher.id, {
+        assessmentId: quiz.id,
+        sectionId: body.sectionId ? Number(body.sectionId) : null,
+        joinCode,
+        settings,
+        dashboardToken,
+      });
+    } catch (err) {
+      return fail(c, /UNIQUE/i.test(err.message)
+        ? `The class code ${joinCode} is already in use. Pick another.`
+        : err.message);
+    }
+
+    return c.json({
+      launched: true,
+      title: quiz.title,
+      joinCode,
+      questions: questions.length,
+      settings,
+      boardUrl: `/live.html#${dashboardToken}`,
+    });
   });
 
   app.get("/api/health", (c) => c.json({ ok: true }));

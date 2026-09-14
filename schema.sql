@@ -19,10 +19,14 @@ PRAGMA foreign_keys = ON;
 -- ---------------------------------------------------------------- people
 
 CREATE TABLE IF NOT EXISTS teachers (
-  id            INTEGER PRIMARY KEY,
-  email         TEXT NOT NULL UNIQUE,
-  display_name  TEXT NOT NULL,
-  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+  id             INTEGER PRIMARY KEY,
+  email          TEXT NOT NULL UNIQUE,
+  display_name   TEXT NOT NULL,
+  -- Interim stand-in for signing in: an unguessable link to the launch
+  -- screen, the same pattern as the live board. Goes away with Google
+  -- sign-in, which is why there is still no password column here.
+  console_token  TEXT UNIQUE,
+  created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 -- No password column. Teachers sign in with their school Google account,
 -- so there are no credentials here to leak or reset.

@@ -54,6 +54,36 @@ export function d1Driver(database) {
 
 // ------------------------------------------------------------------ people
 
+/** The teacher a console link belongs to. Interim until Google sign-in. */
+export async function findTeacherByConsoleToken(sql, token) {
+  if (!token) return null;
+  return sql.get(`SELECT * FROM teachers WHERE console_token = ?`, [token]);
+}
+
+export async function listSections(sql, teacherId) {
+  return sql.all(
+    `SELECT s.id, s.name,
+            (SELECT COUNT(*) FROM enrollments e WHERE e.section_id = s.id) AS students
+       FROM sections s WHERE s.teacher_id = ? ORDER BY s.name`,
+    [teacherId]
+  );
+}
+
+export async function listSessions(sql, teacherId) {
+  return sql.all(
+    `SELECT s.id, s.join_code, s.state, s.settings, s.created_at,
+            s.dashboard_token, a.title, sec.name AS section,
+            (SELECT COUNT(*) FROM attempts at WHERE at.session_id = s.id) AS joined
+       FROM sessions s
+       JOIN assessments a ON a.id = s.assessment_id
+       LEFT JOIN sections sec ON sec.id = s.section_id
+      WHERE s.teacher_id = ?
+      ORDER BY s.created_at DESC
+      LIMIT 20`,
+    [teacherId]
+  );
+}
+
 export async function findTeacherByEmail(sql, email) {
   return sql.get(`SELECT * FROM teachers WHERE email = ?`, [email]);
 }
@@ -565,8 +595,7 @@ export async function getLiveBoard(sql, dashboardToken) {
       title: session.title,
       joinCode: session.join_code,
       state: session.state,
-      delivery: JSON.parse(session.settings || "{}").delivery === "open"
-        ? "open" : "sequential",
+      delivery: JSON.parse(session.settings || "{}").delivery ?? "sequential",
     },
     questions,
     students,

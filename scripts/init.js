@@ -9,6 +9,7 @@
 
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { nodeDriver, findTeacherByEmail, createTeacher } from "../src/db.js";
 
 function arg(name, fallback = null) {
@@ -42,15 +43,34 @@ if (!columns.includes("settings")) {
   console.log("Migrated: sessions.settings added, back-filled from each quiz");
 }
 
+const teacherColumns = database.prepare(`PRAGMA table_info(teachers)`).all().map((c) => c.name);
+if (!teacherColumns.includes("console_token")) {
+  database.exec(`ALTER TABLE teachers ADD COLUMN console_token TEXT`);
+  console.log("Migrated: teachers.console_token added");
+}
+
 if (email) {
   const sql = nodeDriver(database);
   const existing = await findTeacherByEmail(sql, email);
+  let id;
   if (existing) {
-    console.log(`Teacher already present: ${email} (id ${existing.id})`);
+    id = existing.id;
+    console.log(`Teacher already present: ${email} (id ${id})`);
   } else {
-    const id = await createTeacher(sql, { email, displayName: name });
+    id = await createTeacher(sql, { email, displayName: name });
     console.log(`Teacher created: ${email} (id ${id})`);
   }
+
+  // Interim stand-in for signing in, exactly like the live board's link.
+  // Replaced by Google sign-in; until then this link IS the credential.
+  let row = database.prepare(`SELECT console_token FROM teachers WHERE id = ?`).get(id);
+  if (!row.console_token) {
+    const token = randomUUID().replace(/-/g, "");
+    database.prepare(`UPDATE teachers SET console_token = ? WHERE id = ?`).run(token, id);
+    row = { console_token: token };
+  }
+  console.log(`\nYour teacher console -- keep this link to yourself:`);
+  console.log(`    http://localhost:8787/launch.html#${row.console_token}\n`);
 } else {
   console.log(`No --teacher given; add one with:  node scripts/init.js --teacher you@school.org`);
 }

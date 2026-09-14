@@ -70,9 +70,28 @@ have not looked at does not quietly become part of a graded test. Questions
 with no correct answer marked are refused outright rather than imported
 ungradeable.
 
-## Running the same quiz again
+## Launching a test
 
 Import puts the questions in; **launch** decides how a particular run behaves.
+`npm run init` prints a link to your launch screen: pick a quiz, pick a
+delivery method, set the toggles, and you get a class code and a link to the
+live board.
+
+```
+Launch a Test
+
+  QUIZ   heat_test                                    25 questions
+
+  DELIVERY METHOD                 SETTINGS
+  (•) Instant Feedback            Shuffle Questions        [on ]
+      Answers in order, final.    Shuffle Answers          [on ]
+      Right or wrong after each.  Show Question Feedback   [on ]
+  ( ) Open Navigation             Show Final Score         [off]
+      Back and Next, changeable.
+      Hand in at the end.         Class code  ZFMZK     [ Launch ]
+```
+
+Everything is also available from the command line:
 
 ```bash
 node scripts/launch.js --teacher you@school.org            # list your quizzes
@@ -145,6 +164,7 @@ scripts/e2e-test.js the test suite
 scripts/demo-class.js  drive a fake class through a test
 web/test.html       the student test page
 web/live.html       the teacher's live results board
+web/launch.html     the teacher's launch screen
 ```
 
 ### Things worth knowing
@@ -213,8 +233,15 @@ are detected and left in place, and the importer tells you which questions
 those are. Socrative will happily shuffle them into nonsense.
 
 **There is no password column.** Teachers sign in with their school Google
-account (Phase 2), so there are no credentials stored here to leak or reset.
-Until then the live board is reached by an unguessable per-session link.
+account (still to come), so there are no credentials stored here to leak or
+reset. Until then the launch screen and the live board are each reached by an
+unguessable link — those links are the credential, so treat them like one.
+
+**Two settings are deliberately missing from the launch screen.** Socrative
+offers *Require Names* and *One Attempt*; here both are always on and cannot
+be switched off, because students sign in with their number from your roster
+and a session allows one attempt each. A toggle that cannot do anything is
+worse than no toggle.
 
 **No native dependencies.** SQLite comes from Node itself, so `npm install`
 pulls two small pure-JavaScript packages and there is nothing to rebuild when
@@ -227,7 +254,7 @@ npm run dev      # in one terminal
 npm test         # in another
 ```
 
-53 checks covering both delivery modes and the board, including the ones that
+63 checks covering both delivery modes, the launch console and the board, including the ones that
 would be expensive to get wrong: that a dead device resumes in the right
 place, that going back and skipping ahead are refused by the server in
 sequential mode, that an open test cannot be handed in with blanks, that

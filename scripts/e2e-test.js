@@ -286,6 +286,59 @@ if (openJoin.status !== 200) {
     !("modes" in seq.body) && !("modes" in opn.body));
 }
 
+// --- 6d. the teacher's launch console --------------------------------------
+
+{
+  const consoleDb = new DatabaseSync(DB);
+  const consoleToken = consoleDb
+    .prepare(`SELECT console_token FROM teachers WHERE email = ?`)
+    .get("demo@school.test")?.console_token;
+  consoleDb.close();
+
+  if (!consoleToken) {
+    check("teacher has a console link", false, "re-run scripts/init.js");
+  } else {
+    const res = await fetch(`${BASE}/api/teacher/${consoleToken}`);
+    const console_ = await res.json();
+    check("console loads", res.status === 200, console_.error);
+    check("it offers exactly the modes the app supports",
+      console_.modes.map((m) => m.id).sort().join() === "open,sequential");
+    check("it lists quizzes to launch", console_.quizzes.length >= 1);
+    check("it lists what is already running", Array.isArray(console_.sessions));
+
+    check("an invented console link is refused",
+      (await fetch(`${BASE}/api/teacher/not-a-real-token`)).status === 404);
+
+    // Launching is where the mode is decided, so this is the important one.
+    const code = "T" + Math.random().toString(36).slice(2, 7).toUpperCase();
+    const launch = await post(`/api/teacher/${consoleToken}/launch`, {
+      quizId: console_.quizzes[0].id,
+      joinCode: code,
+      mode: "open",
+      shuffleQuestions: true,
+      shuffleChoices: true,
+      showQuestionFeedback: true,     // asked for, but open mode cannot have it
+      showFinalScore: true,
+    });
+    check("a test can be launched from the console", launch.status === 200, launch.body.error);
+    check("the launched session uses the chosen mode",
+      launch.body.settings.delivery === "open");
+    check("feedback is refused for open navigation even when asked for",
+      launch.body.settings.show_question_feedback === false);
+    check("other settings are honoured", launch.body.settings.show_final_score === true);
+
+    const clash = await post(`/api/teacher/${consoleToken}/launch`, {
+      quizId: console_.quizzes[0].id, joinCode: code, mode: "open",
+    });
+    check("a class code cannot be reused", clash.status === 400);
+
+    // And a student joining that code gets exactly what was launched.
+    const student = await post("/api/join", { code, studentNumber: "100004" });
+    check("students get the mode the console launched",
+      student.body.delivery === "open");
+  }
+}
+
 // --- 7. the teacher's live board -------------------------------------------
 
 const boardDb = new DatabaseSync(DB);

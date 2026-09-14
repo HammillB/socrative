@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Launch a Test</title>
+<style>
+  :root {
+    --ground: #f1f4f3; --card: #fff; --ink: #18211f; --muted: #66756f;
+    --line: #d5ded9; --line-soft: #e8eeeb; --accent: #0c6a5e;
+    --accent-soft: #e3f0ec; --bad: #a8491a; --warn-bg: #fbf0d8; --warn: #8a6508;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 28px 20px 80px; }
+
+  header { display: flex; justify-content: space-between; align-items: baseline;
+           gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
+  h1 { font-size: 23px; margin: 0; }
+  .who { color: var(--muted); font-size: 15px; }
+
+  .panel { background: var(--card); border: 1px solid var(--line);
+           border-radius: 10px; padding: 24px; margin-bottom: 20px; }
+  .panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .09em;
+              color: var(--muted); margin: 0 0 14px; font-weight: 700; }
+
+  /* quiz picker */
+  .quiz {
+    display: flex; gap: 14px; align-items: center; width: 100%; text-align: left;
+    padding: 14px 16px; margin-bottom: 8px; cursor: pointer; font: inherit;
+    border: 1px solid var(--line); border-radius: 8px; background: #fff;
+    color: var(--ink);
+  }
+  .quiz:hover { border-color: var(--accent); }
+  .quiz.picked { background: var(--accent-soft); border-color: var(--accent); }
+  .quiz .name { font-weight: 600; }
+  .quiz .count { margin-left: auto; color: var(--muted); font-size: 14.5px;
+                 font-variant-numeric: tabular-nums; }
+
+  /* the launch dialog */
+  .cols { display: grid; gap: 30px; }
+  @media (min-width: 720px) { .cols { grid-template-columns: 1fr 1fr; } }
+
+  .mode {
+    display: block; width: 100%; text-align: left; font: inherit; cursor: pointer;
+    border: 1px solid var(--line); border-radius: 9px; padding: 16px 18px;
+    margin-bottom: 10px; background: #fff; color: var(--ink);
+  }
+  .mode:hover { border-color: var(--accent); }
+  .mode.picked { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .mode .top { display: flex; align-items: center; gap: 10px; }
+  .mode .dot { width: 17px; height: 17px; border-radius: 50%; flex: none;
+               border: 2px solid var(--line); }
+  .mode.picked .dot { border-color: var(--accent); background:
+               radial-gradient(circle, var(--accent) 0 45%, #fff 46%); }
+  .mode .label { font-weight: 700; }
+  .mode .desc { color: var(--muted); font-size: 14.5px; margin-top: 8px;
+                line-height: 1.45; }
+
+  .toggle { display: flex; align-items: center; gap: 14px; padding: 12px 0;
+            border-bottom: 1px solid var(--line-soft); }
+  .toggle:last-of-type { border-bottom: 0; }
+  .toggle .name { flex: 1; }
+  .toggle .name small { display: block; color: var(--muted); font-size: 13.5px; }
+  .switch { position: relative; width: 46px; height: 26px; flex: none;
+            border: 0; border-radius: 13px; background: var(--line);
+            cursor: pointer; padding: 0; transition: background .15s; }
+  .switch::after { content: ""; position: absolute; top: 3px; left: 3px;
+                   width: 20px; height: 20px; border-radius: 50%; background: #fff;
+                   transition: transform .15s; }
+  .switch[aria-checked="true"] { background: var(--accent); }
+  .switch[aria-checked="true"]::after { transform: translateX(20px); }
+  .switch:disabled { opacity: .45; cursor: not-allowed; }
+  .switch:focus-visible, button:focus-visible, input:focus-visible,
+  select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  .fixed-note { margin-top: 16px; padding: 12px 14px; border-radius: 7px;
+                background: var(--ground); color: var(--muted); font-size: 14px; }
+
+  .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end;
+         margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--line-soft); }
+  label.field { display: block; font-size: 13.5px; font-weight: 600; }
+  label.field span { display: block; margin-bottom: 6px; }
+  input[type=text], select {
+    font: inherit; padding: 11px 13px; border: 1px solid var(--line);
+    border-radius: 7px; background: #fff; color: var(--ink); min-width: 170px;
+  }
+  #code { text-transform: uppercase; letter-spacing: .1em; font-weight: 600; }
+  .grow { flex: 1 1 auto; }
+
+  button.go { font: inherit; font-size: 17px; font-weight: 700; cursor: pointer;
+              border: 0; border-radius: 8px; padding: 14px 32px;
+              background: var(--accent); color: #fff; }
+  button.go:disabled { opacity: .45; cursor: default; }
+
+  .error { color: var(--bad); font-weight: 600; margin-top: 14px; }
+
+  /* result */
+  .launched { text-align: center; padding: 30px 24px; }
+  .bigcode { font: 700 44px/1 ui-monospace, Consolas, monospace;
+             letter-spacing: .14em; margin: 14px 0 6px; color: var(--accent); }
+  .launched .sub { color: var(--muted); }
+  .links { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;
+           margin-top: 24px; }
+  a.btn { text-decoration: none; font-weight: 600; padding: 12px 22px;
+          border-radius: 7px; border: 1px solid var(--line); color: var(--ink);
+          background: #fff; }
+  a.btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* running sessions */
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line-soft);
+           font-size: 15px; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .07em;
+       color: var(--muted); }
+  td.code { font-family: ui-monospace, Consolas, monospace; font-weight: 600;
+            letter-spacing: .08em; }
+  .pill { font-size: 11.5px; font-weight: 700; letter-spacing: .05em;
+          text-transform: uppercase; padding: 3px 8px; border-radius: 3px;
+          background: var(--ground); color: var(--muted); }
+  .empty { color: var(--muted); padding: 10px 0; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Launch a Test</h1>
+    <span class="who" id="who"></span>
+  </header>
+
+  <div id="app" hidden>
+
+    <!-- 1. which quiz ------------------------------------------------- -->
+    <section class="panel">
+      <h2>Quiz</h2>
+      <div id="quizzes"></div>
+    </section>
+
+    <!-- 2. how it runs ------------------------------------------------ -->
+    <section class="panel" id="setup" hidden>
+      <div class="cols">
+        <div>
+          <h2>Delivery Method</h2>
+          <div id="modes"></div>
+        </div>
+        <div>
+          <h2>Settings</h2>
+          <div id="toggles"></div>
+          <p class="fixed-note">
+            Students always sign in with their student number from your roster,
+            and always get one attempt. There is nothing to switch off.
+          </p>
+        </div>
+      </div>
+
+      <div class="row">
+        <label class="field">
+          <span>Class code</span>
+          <input type="text" id="code" maxlength="12" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="field">
+          <span>Room</span>
+          <select id="room"></select>
+        </label>
+        <span class="grow"></span>
+        <button class="go" id="launch" type="button">Launch</button>
+      </div>
+      <p class="error" id="error" hidden></p>
+    </section>
+
+    <!-- 3. it is running ---------------------------------------------- -->
+    <section class="panel launched" id="result" hidden>
+      <h2 style="margin-bottom:2px">Test is open</h2>
+      <p class="sub" id="result-title"></p>
+      <div class="bigcode" id="result-code"></div>
+      <p class="sub">Students go to this site and enter that code with their student number.</p>
+      <div class="links">
+        <a class="btn primary" id="board-link" target="_blank" rel="noopener">Open the live board</a>
+        <a class="btn" href="#" id="again">Launch another</a>
+      </div>
+    </section>
+
+    <!-- running now ---------------------------------------------------- -->
+    <section class="panel">
+      <h2>Recent tests</h2>
+      <div id="sessions"></div>
+    </section>
+
+  </div>
+
+  <p class="error" id="fatal" hidden></p>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const token = location.hash.slice(1);
+
+  if (!token) {
+    $("fatal").textContent =
+      "This link is missing its console code. Use the full link printed by npm run init.";
+    $("fatal").hidden = false;
+    return;
+  }
+
+  // Defaults match what a graded test usually wants. show_question_feedback is
+  // handled specially: open navigation cannot have it, so the switch is locked
+  // off rather than silently ignored.
+  const chosen = {
+    quizId: null,
+    mode: "sequential",
+    shuffleQuestions: true,
+    shuffleChoices: true,
+    showQuestionFeedback: true,
+    showFinalScore: false,
+  };
+
+  const SWITCHES = [
+    ["shuffleQuestions", "Shuffle Questions", "Each student gets them in a different order."],
+    ["shuffleChoices", "Shuffle Answers", "Answer choices are reordered per student."],
+    ["showQuestionFeedback", "Show Question Feedback",
+      "Tell the student right or wrong, with the answer and why."],
+    ["showFinalScore", "Show Final Score", "Show their score when they finish."],
+  ];
+
+  let data = null;
+
+  async function api(path, options) {
+    const res = await fetch(path, options);
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || "Something went wrong.");
+    return body;
+  }
+
+  function randomCode() {
+    const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";   // no I or O: they read as 1 and 0
+    return Array.from({ length: 5 }, () =>
+      letters[Math.floor(Math.random() * letters.length)]).join("");
+  }
+
+  // --- rendering -----------------------------------------------------------
+
+  function renderQuizzes() {
+    const host = $("quizzes");
+    host.textContent = "";
+    if (!data.quizzes.length) {
+      host.innerHTML = '<p class="empty">No quizzes yet. Import one with scripts/import.js.</p>';
+      return;
+    }
+    for (const quiz of data.quizzes) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "quiz" + (chosen.quizId === quiz.id ? " picked" : "");
+
+      const name = document.createElement("span");
+      name.className = "name";
+      name.textContent = quiz.title;
+
+      const count = document.createElement("span");
+      count.className = "count";
+      count.textContent = `${quiz.questions} question${quiz.questions === 1 ? "" : "s"}`;
+
+      button.append(name, count);
+      button.addEventListener("click", () => {
+        chosen.quizId = quiz.id;
+        $("result").hidden = true;
+        $("setup").hidden = false;
+        if (!$("code").value) $("code").value = randomCode();
+        renderQuizzes();
+        $("setup").scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
+      host.append(button);
+    }
+  }
+
+  function renderModes() {
+    const host = $("modes");
+    host.textContent = "";
+    for (const mode of data.modes) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "mode" + (chosen.mode === mode.id ? " picked" : "");
+
+      const top = document.createElement("span");
+      top.className = "top";
+      const dot = document.createElement("span");
+      dot.className = "dot";
+      const label = document.createElement("span");
+      label.className = "label";
+      label.textContent = mode.label;
+      top.append(dot, label);
+
+      const desc = document.createElement("span");
+      desc.className = "desc";
+      desc.textContent = mode.description;
+
+      button.append(top, desc);
+      button.addEventListener("click", () => {
+        chosen.mode = mode.id;
+        renderModes();
+        renderToggles();
+      });
+      host.append(button);
+    }
+  }
+
+  function renderToggles() {
+    const host = $("toggles");
+    host.textContent = "";
+
+    for (const [key, label, hint] of SWITCHES) {
+      // Open navigation cannot show feedback: a student who saw right or wrong
+      // would just go back and change the answer.
+      const locked = key === "showQuestionFeedback" && chosen.mode === "open";
+      const value = locked ? false : chosen[key];
+
+      const row = document.createElement("div");
+      row.className = "toggle";
+
+      const name = document.createElement("span");
+      name.className = "name";
+      name.textContent = label;
+      const small = document.createElement("small");
+      small.textContent = locked
+        ? "Not available with Open Navigation — students could change their answer."
+        : hint;
+      name.append(small);
+
+      const sw = document.createElement("button");
+      sw.type = "button";
+      sw.className = "switch";
+      sw.setAttribute("role", "switch");
+      sw.setAttribute("aria-checked", String(value));
+      sw.setAttribute("aria-label", label);
+      sw.disabled = locked;
+      sw.addEventListener("click", () => {
+        chosen[key] = !chosen[key];
+        renderToggles();
+      });
+
+      row.append(name, sw);
+      host.append(row);
+    }
+  }
+
+  function renderRooms() {
+    const select = $("room");
+    select.textContent = "";
+    const none = document.createElement("option");
+    none.value = "";
+    none.textContent = data.rooms.length ? "Anyone with the code" : "No rooms yet";
+    select.append(none);
+    for (const room of data.rooms) {
+      const option = document.createElement("option");
+      option.value = room.id;
+      option.textContent = `${room.name} (${room.students})`;
+      select.append(option);
+    }
+  }
+
+  function renderSessions() {
+    const host = $("sessions");
+    host.textContent = "";
+    if (!data.sessions.length) {
+      host.innerHTML = '<p class="empty">Nothing launched yet.</p>';
+      return;
+    }
+    const table = document.createElement("table");
+    table.innerHTML =
+      "<thead><tr><th>Code</th><th>Quiz</th><th>Room</th><th>Mode</th>" +
+      "<th>Joined</th><th></th></tr></thead>";
+    const body = document.createElement("tbody");
+
+    for (const s of data.sessions) {
+      const tr = document.createElement("tr");
+      const cells = [
+        ["code", s.joinCode],
+        ["", s.title],
+        ["", s.section || "—"],
+        ["", s.delivery === "open" ? "Open Navigation" : "Instant Feedback"],
+        ["", `${s.joined}`],
+      ];
+      for (const [cls, text] of cells) {
+        const td = document.createElement("td");
+        if (cls) td.className = cls;
+        td.textContent = text;
+        tr.append(td);
+      }
+      const last = document.createElement("td");
+      const link = document.createElement("a");
+      link.href = s.boardUrl;
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.textContent = "Live board";
+      last.append(link);
+      if (s.state !== "open") {
+        const pill = document.createElement("span");
+        pill.className = "pill";
+        pill.textContent = s.state;
+        last.append(" ", pill);
+      }
+      tr.append(last);
+      body.append(tr);
+    }
+    table.append(body);
+    host.append(table);
+  }
+
+  // --- launching -----------------------------------------------------------
+
+  $("launch").addEventListener("click", async () => {
+    const button = $("launch");
+    const error = $("error");
+    error.hidden = true;
+    button.disabled = true;
+    button.textContent = "Launching…";
+    try {
+      const result = await api(`/api/teacher/${encodeURIComponent(token)}/launch`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...chosen,
+          joinCode: $("code").value.trim().toUpperCase(),
+          sectionId: $("room").value || null,
+        }),
+      });
+
+      $("result-title").textContent = `${result.title} — ${result.questions} questions`;
+      $("result-code").textContent = result.joinCode;
+      $("board-link").href = result.boardUrl;
+      $("setup").hidden = true;
+      $("result").hidden = false;
+      $("code").value = "";
+      chosen.quizId = null;
+      await load();
+      $("result").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } catch (err) {
+      error.textContent = err.message;
+      error.hidden = false;
+    } finally {
+      button.disabled = false;
+      button.textContent = "Launch";
+    }
+  });
+
+  $("again").addEventListener("click", (event) => {
+    event.preventDefault();
+    $("result").hidden = true;
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+
+  // --- start ---------------------------------------------------------------
+
+  async function load() {
+    data = await api(`/api/teacher/${encodeURIComponent(token)}`);
+    $("who").textContent = data.teacher.name;
+    renderQuizzes();
+    renderModes();
+    renderToggles();
+    renderRooms();
+    renderSessions();
+    $("app").hidden = false;
+  }
+
+  load().catch((err) => {
+    $("fatal").textContent = err.message;
+    $("fatal").hidden = false;
+  });
+})();
+</script>
+</body>
+</html>

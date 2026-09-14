@@ -12,13 +12,18 @@
 
 export const MODES = ["sequential", "open"];
 
+export const MODE_LABELS = {
+  sequential: "Instant Feedback",
+  open: "Open Navigation",
+};
+
 export const MODE_DESCRIPTIONS = {
   sequential:
-    "One question at a time, answers final, no going back. Right or wrong is " +
-    "shown after each answer, and the last answer ends the test.",
+    "Students answer in order and cannot change answers. Right or wrong is " +
+    "shown after each question, and the last answer ends the test.",
   open:
-    "One question at a time, but Back and Next to move about. Answers can be " +
-    "changed, and the test is handed in at the end once nothing is blank.",
+    "Students move freely with Back and Next and can change answers. They " +
+    "hand in at the end, and cannot until every question is answered.",
 };
 
 export function launchSettings({
@@ -32,12 +37,10 @@ export function launchSettings({
     throw new Error(`mode must be one of: ${MODES.join(", ")}`);
   }
 
-  // Per-question feedback only makes sense when a student cannot go back. In
-  // open navigation, a student shown right or wrong would simply change their
-  // answer, which is not a test -- so it is forced off rather than offered.
-  const feedback = mode === "sequential"
-    ? (showQuestionFeedback ?? true)
-    : false;
+  // Per-question feedback only makes sense when a student cannot go back and
+  // revise. In open navigation a student shown right or wrong would simply
+  // change their answer, so it is forced off rather than offered.
+  const feedback = mode === "open" ? false : (showQuestionFeedback ?? true);
 
   return {
     delivery: mode,
@@ -54,7 +57,8 @@ export function describeSettings(settings) {
   const on = [];
   if (settings.shuffle_questions) on.push("questions shuffled");
   if (settings.shuffle_choices) on.push("answers shuffled");
+  if (settings.show_question_feedback) on.push("feedback after each question");
   if (settings.show_final_score) on.push("final score shown");
-  if (on.length) lines.push(on.join(", "));
+  lines.push(on.length ? on.join(", ") : "no extras");
   return lines;
 }
