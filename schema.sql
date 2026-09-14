@@ -101,7 +101,9 @@ CREATE TABLE IF NOT EXISTS assessments (
   id          INTEGER PRIMARY KEY,
   teacher_id  INTEGER NOT NULL REFERENCES teachers(id) ON DELETE CASCADE,
   title       TEXT NOT NULL,
-  settings    TEXT NOT NULL DEFAULT '{}',   -- JSON: shuffle_questions, shuffle_choices, ...
+  -- Defaults for this quiz. Copied onto a session when it is launched, and
+  -- editing them never disturbs a test already running.
+  settings    TEXT NOT NULL DEFAULT '{}',
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -125,6 +127,12 @@ CREATE TABLE IF NOT EXISTS sessions (
   -- unguessable link rather than left open. The board contains the answer
   -- key, so it must never be readable by anyone holding only a join code.
   dashboard_token TEXT UNIQUE,
+  -- How THIS run of the quiz behaves: delivery mode, shuffling, feedback.
+  -- The teacher chooses at launch, the same way Socrative does, so one quiz
+  -- can run locked for a graded test and open for a review the next day.
+  -- Frozen here at launch: nothing a student is part-way through can change
+  -- under them.
+  settings       TEXT NOT NULL DEFAULT '{}',
   state          TEXT NOT NULL DEFAULT 'open',   -- open | paused | closed
   created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );

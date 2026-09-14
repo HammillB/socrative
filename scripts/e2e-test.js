@@ -254,6 +254,38 @@ if (openJoin.status !== 200) {
   check("nothing can be changed after handing in", afterHandIn.status === 409);
 }
 
+// --- 6c. the mode belongs to the session, not the quiz ----------------------
+// HEAT1 and OPEN1 are the SAME questions launched twice with different rules.
+// If delivery lived on the quiz they could not differ, and re-running a test
+// in another mode would mean importing every question again.
+
+{
+  const modeDb = new DatabaseSync(DB);
+  const sessions = modeDb.prepare(
+    `SELECT join_code, assessment_id, settings FROM sessions
+      WHERE join_code IN (?, ?)`).all(CODE, OPEN);
+  const questionCount = modeDb.prepare(`SELECT COUNT(*) AS n FROM questions`).get().n;
+  const quizCount = modeDb.prepare(`SELECT COUNT(*) AS n FROM assessments`).get().n;
+  modeDb.close();
+
+  check("both sessions run the same quiz", sessions.length === 2 &&
+    sessions[0].assessment_id === sessions[1].assessment_id);
+  check("launching in a second mode did not duplicate the questions",
+    quizCount === 1, `${quizCount} quiz(zes), ${questionCount} questions`);
+
+  const modes = sessions.map((row) => JSON.parse(row.settings).delivery).sort();
+  check("the two sessions carry different delivery modes",
+    modes.join() === "open,sequential", modes.join(" / "));
+
+  // What students are told is decided entirely by the session they joined.
+  const seq = await post("/api/join", { code: CODE, studentNumber: "100006" });
+  const opn = await post("/api/join", { code: OPEN, studentNumber: "100006" });
+  check("the same student gets the mode the teacher launched",
+    seq.body.delivery === "sequential" && opn.body.delivery === "open");
+  check("students are given no choice of mode",
+    !("modes" in seq.body) && !("modes" in opn.body));
+}
+
 // --- 7. the teacher's live board -------------------------------------------
 
 const boardDb = new DatabaseSync(DB);

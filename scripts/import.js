@@ -24,6 +24,7 @@ import {
   createQuestion, createAssessment, addAssessmentItem, createSession,
 } from "../src/db.js";
 import { choicesAreShuffleSafe } from "../src/app.js";
+import { launchSettings, describeSettings, MODES } from "../src/delivery.js";
 
 function arg(name, fallback = null) {
   const i = process.argv.indexOf(`--${name}`);
@@ -119,8 +120,8 @@ if (rosterPath) {
 
 const quizPath = arg("quiz");
 const mode = (arg("mode", "sequential") || "").toLowerCase();
-if (!["sequential", "open"].includes(mode)) {
-  console.error(`--mode must be "sequential" or "open"`);
+if (!MODES.includes(mode)) {
+  console.error(`--mode must be one of: ${MODES.join(", ")}`);
   process.exit(1);
 }
 let assessmentId = null;
@@ -131,17 +132,9 @@ if (quizPath) {
 
   assessmentId = await createAssessment(sql, teacher.id, {
     title,
-    settings: {
-      // sequential : one question, answered once, no way back
-      // open       : Back and Next, changeable answers, hand in at the end
-      delivery: mode,
-      shuffle_questions: true,
-      shuffle_choices: true,
-      // Right/wrong after each answer. Only meaningful in sequential mode --
-      // a student who could go back would just correct themselves.
-      show_question_feedback: mode === "sequential",
-      show_final_score: false,
-    },
+    // Defaults for this quiz. What students actually get is decided when a
+    // session is launched, below or later via scripts/launch.js.
+    settings: launchSettings({ mode }),
   });
 
   const flagged = [], unshuffleable = [], skipped = [];
@@ -178,9 +171,6 @@ if (quizPath) {
   }
 
   console.log(`Quiz: "${title}" -- ${position} questions imported`);
-  console.log(mode === "open"
-    ? `  Open navigation: Back and Next, answers changeable, hand in at the end.`
-    : `  Sequential: one question at a time, answers final, feedback after each.`);
 
   if (withExplanation < position) {
     console.log(`
@@ -207,21 +197,26 @@ if (quizPath) {
 
 const joinCode = arg("code");
 if (joinCode && assessmentId) {
-  const sessionId = await createSession(sql, teacher.id, { assessmentId, sectionId, joinCode });
+  const settings = launchSettings({ mode });
 
   // The live board shows the answer key, so it gets its own unguessable link
   // rather than being reachable by the join code the whole class knows.
   const dashboardToken = randomUUID().replace(/-/g, "");
-  database
-    .prepare(`UPDATE sessions SET dashboard_token = ? WHERE id = ?`)
-    .run(dashboardToken, sessionId);
+  await createSession(sql, teacher.id, {
+    assessmentId, sectionId, joinCode, settings, dashboardToken,
+  });
 
   const host = arg("host", "http://localhost:8787");
-  console.log(`\nTest is open. Students go to ${host} and enter:`);
+  console.log(`\nTest is open.\n`);
+  for (const line of describeSettings(settings)) console.log(`  ${line}`);
+  console.log(`\nStudents go to ${host} and enter:`);
   console.log(`    class code      ${joinCode.toUpperCase()}`);
   console.log(`    student number  (their own)`);
   console.log(`\nYour live board -- keep this link to yourself, it shows the answers:`);
   console.log(`    ${host}/live.html#${dashboardToken}`);
+  console.log(`\nTo run these same questions again in a different mode:`);
+  console.log(`    node scripts/launch.js --teacher ${email} --quiz ${assessmentId}` +
+              ` --section <room> --code <CODE> --mode open\n`);
 }
 
 database.close();

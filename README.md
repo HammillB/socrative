@@ -15,7 +15,11 @@ they can do with it:
 | Right/wrong after each | yes, with the answer and why | no |
 | Finishing | the last answer ends it | Hand in, blocked while anything is blank |
 
-Pick one per test with `--mode sequential` or `--mode open`.
+**The teacher chooses the mode when launching a test, not when writing it.**
+Students are never asked and never told there was a choice — the page simply
+behaves the way the session says. So one quiz can run locked for a graded test
+on Tuesday and open for a review on Wednesday, without importing the questions
+twice.
 
 **Status: Phase 2, in progress.** The student side works end to end and the
 teacher's live results board is running. Tests are still set up from the
@@ -65,6 +69,19 @@ Any question the converter flagged is listed again at the end, so a row you
 have not looked at does not quietly become part of a graded test. Questions
 with no correct answer marked are refused outright rather than imported
 ungradeable.
+
+## Running the same quiz again
+
+Import puts the questions in; **launch** decides how a particular run behaves.
+
+```bash
+node scripts/launch.js --teacher you@school.org            # list your quizzes
+node scripts/launch.js --teacher you@school.org --quiz 1   --section INTSCIA3 --code REVIEW --mode open
+```
+
+Also takes `--no-shuffle`, `--no-shuffle-answers`, `--show-score` and
+`--no-feedback`. Settings are frozen onto the session at launch, so changing a
+quiz later cannot alter a test a class is part-way through.
 
 ## Running it
 
@@ -121,7 +138,9 @@ src/db.js           every SQL statement in the application
 src/app.js          routes, seeded shuffling, paper assembly
 src/dev-server.js   local Node server (the D1 entry point is still to come)
 scripts/init.js     create the database, add a teacher
+src/delivery.js     launch settings, and what each delivery mode means
 scripts/import.js   load a roster, load a quiz, open a session
+scripts/launch.js   run an already-imported quiz, in either mode
 scripts/e2e-test.js the test suite
 scripts/demo-class.js  drive a fake class through a test
 web/test.html       the student test page
@@ -148,7 +167,12 @@ student with no connection still gets a useful answer, and again on the server
 so it cannot be clicked past.
 
 **Open navigation gives no per-question feedback.** A student who could see
-right or wrong before handing in would simply change their answer.
+right or wrong before handing in would simply change their answer, so it is
+forced off for that mode rather than offered.
+
+**Launch settings live on the session, not the quiz.** How a test behaves is a
+property of a particular run, so the same questions can be launched twice with
+different rules and neither run changes when the quiz is edited.
 
 **Answers are graded and final as they are submitted.** Answering the last
 question ends the test by itself — there is no hand-in step to forget, and no
@@ -203,7 +227,7 @@ npm run dev      # in one terminal
 npm test         # in another
 ```
 
-48 checks covering both delivery modes and the board, including the ones that
+53 checks covering both delivery modes and the board, including the ones that
 would be expensive to get wrong: that a dead device resumes in the right
 place, that going back and skipping ahead are refused by the server in
 sequential mode, that an open test cannot be handed in with blanks, that

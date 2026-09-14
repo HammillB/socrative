@@ -212,9 +212,17 @@ export async function getAssessmentQuestions(sql, assessmentId, { includeAnswers
 
 // ----------------------------------------------------------------- testing
 
+/**
+ * A session by its join code.
+ *
+ * `settings` deliberately comes from the SESSION, not the quiz: how a test
+ * behaves is chosen by the teacher when they launch it, and is fixed for the
+ * life of that run.
+ */
 export async function findSessionByCode(sql, joinCode) {
   return sql.get(
-    `SELECT s.*, a.title, a.settings
+    `SELECT s.id, s.teacher_id, s.assessment_id, s.section_id, s.join_code,
+            s.state, s.settings, a.title
        FROM sessions s
        JOIN assessments a ON a.id = s.assessment_id
       WHERE s.join_code = ?`,
@@ -222,13 +230,37 @@ export async function findSessionByCode(sql, joinCode) {
   );
 }
 
-export async function createSession(sql, teacherId, { assessmentId, sectionId, joinCode }) {
+/** Launch a quiz. The settings passed here are what the students will get. */
+export async function createSession(
+  sql, teacherId, { assessmentId, sectionId, joinCode, settings = {}, dashboardToken = null }
+) {
   const { lastInsertId } = await sql.run(
-    `INSERT INTO sessions (teacher_id, assessment_id, section_id, join_code)
-     VALUES (?, ?, ?, ?)`,
-    [teacherId, assessmentId, sectionId, joinCode.toUpperCase()]
+    `INSERT INTO sessions
+       (teacher_id, assessment_id, section_id, join_code, settings, dashboard_token)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [teacherId, assessmentId, sectionId, joinCode.toUpperCase(),
+     JSON.stringify(settings), dashboardToken]
   );
   return lastInsertId;
+}
+
+/** A quiz belonging to this teacher, with its default settings. */
+export async function findAssessment(sql, teacherId, assessmentId) {
+  return sql.get(
+    `SELECT * FROM assessments WHERE id = ? AND teacher_id = ?`,
+    [assessmentId, teacherId]
+  );
+}
+
+export async function listAssessments(sql, teacherId) {
+  return sql.all(
+    `SELECT a.id, a.title, a.created_at,
+            (SELECT COUNT(*) FROM assessment_items ai WHERE ai.assessment_id = a.id) AS questions
+       FROM assessments a
+      WHERE a.teacher_id = ?
+      ORDER BY a.created_at DESC`,
+    [teacherId]
+  );
 }
 
 export async function findAttempt(sql, sessionId, studentId) {
@@ -249,7 +281,7 @@ export async function createAttempt(sql, { sessionId, studentId, seed, token }) 
 export async function findAttemptByToken(sql, token) {
   return sql.get(
     `SELECT a.*, s.assessment_id, s.state AS session_state,
-            asm.settings, asm.title
+            s.settings, asm.title
        FROM attempts a
        JOIN sessions s    ON s.id   = a.session_id
        JOIN assessments asm ON asm.id = s.assessment_id
@@ -398,7 +430,8 @@ export async function getLiveBoard(sql, dashboardToken) {
   const LETTERS = "ABCDEFGH";
 
   const session = await sql.get(
-    `SELECT s.*, a.title, a.settings
+    `SELECT s.id, s.teacher_id, s.assessment_id, s.section_id, s.join_code,
+            s.state, s.settings, a.title
        FROM sessions s
        JOIN assessments a ON a.id = s.assessment_id
       WHERE s.dashboard_token = ?`,
@@ -532,6 +565,8 @@ export async function getLiveBoard(sql, dashboardToken) {
       title: session.title,
       joinCode: session.join_code,
       state: session.state,
+      delivery: JSON.parse(session.settings || "{}").delivery === "open"
+        ? "open" : "sequential",
     },
     questions,
     students,

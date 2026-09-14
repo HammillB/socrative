@@ -31,6 +31,16 @@ if (!columns.includes("dashboard_token")) {
   database.exec(`ALTER TABLE sessions ADD COLUMN dashboard_token TEXT`);
   console.log("Migrated: sessions.dashboard_token added");
 }
+if (!columns.includes("settings")) {
+  database.exec(`ALTER TABLE sessions ADD COLUMN settings TEXT NOT NULL DEFAULT '{}'`);
+  // Existing sessions inherit whatever their quiz was set to, so nothing
+  // already running changes behaviour.
+  database.exec(`
+    UPDATE sessions SET settings =
+      COALESCE((SELECT a.settings FROM assessments a WHERE a.id = sessions.assessment_id), '{}')
+    WHERE settings = '{}'`);
+  console.log("Migrated: sessions.settings added, back-filled from each quiz");
+}
 
 if (email) {
   const sql = nodeDriver(database);
