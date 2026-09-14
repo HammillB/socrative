@@ -36,6 +36,11 @@
     color: var(--ink);
   }
   button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.danger { background: #fff; color: var(--wrong); border-color: #e3c4b3; }
+  button.danger:hover { background: var(--wrong-bg); }
+  .finished-badge { font-size: 12px; font-weight: 700; letter-spacing: .05em;
+                     text-transform: uppercase; padding: 8px 14px; border-radius: 6px;
+                     background: var(--right-bg); color: var(--right); }
   .score-mode-label { display: flex; align-items: center; gap: 8px; font-size: 12px;
                        font-weight: 600; letter-spacing: .03em; text-transform: uppercase;
                        color: var(--muted); }
@@ -121,6 +126,8 @@
       </select>
     </label>
     <button id="state" type="button">Pause</button>
+    <button id="finish" class="danger" type="button">Finish Activity</button>
+    <span class="finished-badge" id="finished-badge" hidden>Finished</span>
   </div>
 </header>
 
@@ -214,7 +221,11 @@
       `${board.session.delivery === "open" ? "Open navigation" : "Sequential"} · ` +
       `${board.summary.joined} of ${board.summary.total} joined · ` +
       `${board.summary.submitted} handed in`;
-    $("state").textContent = board.session.state === "open" ? "Pause" : "Reopen";
+    const closed = board.session.state === "closed";
+    $("state").hidden = closed;
+    $("finish").hidden = closed;
+    $("finished-badge").hidden = !closed;
+    if (!closed) $("state").textContent = board.session.state === "open" ? "Pause" : "Reopen";
     $("empty").hidden = board.students.length > 0;
 
     const table = $("board");
@@ -334,6 +345,22 @@ ${student.percentOfTest}% of the whole test so far`;
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ state: next }),
+    });
+    refresh();
+  });
+
+  $("finish").addEventListener("click", async () => {
+    const inProgress = board?.students.filter((s) => s.status === "in_progress").length ?? 0;
+    const warning = inProgress
+      ? `Finish this test now? ${inProgress} student${inProgress === 1 ? " is" : "s are"} ` +
+        `still working and will not be able to answer any more questions.`
+      : `Finish this test? Nobody will be able to join or answer once it is closed.`;
+    if (!confirm(warning)) return;
+
+    await fetch(`/api/live/${encodeURIComponent(token)}/state`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ state: "closed" }),
     });
     refresh();
   });

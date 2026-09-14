@@ -509,6 +509,45 @@ if (!dashboardToken) {
   // The room name is known to the whole class; it must not open the board.
   check("the room name does NOT open the board",
     (await fetch(`${BASE}/api/live/${ROOM}`)).status === 404);
+
+  // --- 7b. Finish Activity -- the live board's one irreversible action -----
+  //
+  // Run last on purpose: it closes ROOM's session, so nothing after this can
+  // rely on it still being open. The reset block at the top of the suite
+  // reopens it again next run.
+
+  const closeReq = await fetch(`${BASE}/api/live/${dashboardToken}/state`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ state: "closed" }),
+  });
+  check("finishing the activity is accepted", closeReq.status === 200);
+
+  const afterClose = await (await fetch(`${BASE}/api/live/${dashboardToken}`)).json();
+  check("the board reports the session as closed", afterClose.session.state === "closed");
+
+  // The two things Finish Activity exists to guarantee: nobody new gets in,
+  // and nobody still mid-test can go on answering.
+  const lateJoin = await post("/api/join", { room: ROOM, studentNumber: "100003" });
+  check("nobody can join once the activity is finished", lateJoin.status === 404);
+
+  // The board never carries a student's attempt token -- that would let
+  // anyone holding the board link answer as a student -- so to prove a
+  // mid-test student is actually locked out, their token is read straight
+  // from the database instead.
+  const dbCheck = new DatabaseSync(DB);
+  const anAttemptToken = dbCheck.prepare(
+    `SELECT a.token FROM attempts a
+       JOIN sessions s ON s.id = a.session_id
+      WHERE s.dashboard_token = ? AND a.status = 'in_progress' LIMIT 1`
+  ).get(dashboardToken)?.token;
+  dbCheck.close();
+
+  if (anAttemptToken) {
+    const blocked = await post("/api/resume", { token: anAttemptToken });
+    check("a student mid-test is locked out once the activity is finished",
+      blocked.status === 409, blocked.body.error);
+  }
 }
 
 // ---------------------------------------------------------------------------

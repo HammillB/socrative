@@ -148,6 +148,13 @@ thirty students who picked the same wrong answer all show the same letter.
 A question the class is failing in real time gets its column highlighted, which
 is worth knowing before the period ends rather than at marking.
 
+**Finish Activity** closes the test for the whole room: nobody can join, and
+anyone still mid-test is stopped at their next request with "Your teacher has
+closed this test." It is the one irreversible control on this page, so it
+confirms first, naming how many students are still working if any are. Once
+finished, Pause and Finish give way to a plain **Finished** badge and the grid
+stays up for review.
+
 `Names`, `Answers` and `Right / wrong` toggle independently, so the board can
 be projected without giving away the key. **Score Display** picks what the
 score column shows -- three views of a student's test that can genuinely
@@ -290,12 +297,14 @@ npm run dev      # in one terminal
 npm test         # in another
 ```
 
-74 checks covering both delivery modes, the launch console and the board, including the ones that
+82 checks covering both delivery modes, the launch console and the board, including the ones that
 would be expensive to get wrong: that a dead device resumes in the right
 place, that going back and skipping ahead are refused by the server in
 sequential mode, that an open test cannot be handed in with blanks, that
-feedback names the letter the student actually saw, and that a shuffled paper
-still maps to the right canonical letter on the teacher's grid.
+feedback names the letter the student actually saw, that a shuffled paper
+still maps to the right canonical letter on the teacher's grid, that points
+and progress hold up against an independent recomputation, and that Finish
+Activity actually locks everyone out rather than just looking like it does.
 
 The suite expects a test running in each of two rooms — a sequential one in
 `INTSCIA3` and an open one in `INTSCIA4`, since a room runs one at a time. It
