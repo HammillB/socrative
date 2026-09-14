@@ -5,10 +5,12 @@ A self-hosted replacement for Socrative, for multiple-choice science tests.
 Students join with a class code and their student number, take the test on a
 Chromebook, and it grades itself. Everything runs on your own database.
 
-**Status: Phase 2, in progress.** The student side works end to end — join,
-answer, resume after a dead device, hand in, score — and the teacher's live
-results board is running. Tests are still set up from the command line;
-authoring and sign-in are next.
+Students are served **one question at a time**. They pick a letter, submit,
+and move on — answers are final and there is no going back.
+
+**Status: Phase 2, in progress.** The student side works end to end and the
+teacher's live results board is running. Tests are still set up from the
+command line; authoring and sign-in are next.
 
 ---
 
@@ -119,17 +121,31 @@ web/live.html       the teacher's live results board
 
 ### Things worth knowing
 
-**Answers are graded as they are saved, not on submit.** A student whose
-battery dies, or who never presses Hand in, still has a scored paper.
+**One question at a time, enforced by the server.** The browser is never told
+which question a student is on; the server works it out from how many they
+have answered. Answering anything other than the current question is refused,
+so neither going back nor skipping ahead is possible however the page is
+tampered with. A rule the browser enforces is not a rule.
 
-**The test page keeps working without a network.** Every answer is written to
-the browser's own storage the instant it is picked, then uploaded in the
-background; a dropped connection shows a banner and nothing is lost. Reloading
-the page resumes where the student was. All images are fetched before the
-first question appears, so a diagram is never missing mid-test.
+**Only one question is ever sent.** The whole paper is never in the browser,
+so a student who reads the network traffic still cannot read ahead.
 
-**Correct answers never reach the browser during a test.** The paper sent to a
-student contains no `isCorrect` anywhere — checking the page source finds
+**Answers are graded and final as they are submitted.** Answering the last
+question ends the test by itself — there is no hand-in step to forget, and no
+way to leave a paper unsubmitted.
+
+**A dead device loses nothing.** The position lives on the server, so a
+student logs back in — on that Chromebook or any other — and lands on the
+question they had reached, with everything before it recorded.
+
+**The trade-off worth knowing:** because the next question comes from the
+server, a student cannot advance while the network is down. The page retries
+and keeps their selection, but they wait. An open-navigation test could cache
+the whole paper and carry on offline; a locked sequential one cannot. That is
+the cost of the mode, not a defect in it.
+
+**Correct answers never reach the browser during a test.** What a student is
+sent contains no `isCorrect` anywhere — checking the page source finds
 nothing.
 
 **Each attempt stores a `seed`** that determines question order, choice order
@@ -155,9 +171,10 @@ npm run dev      # in one terminal
 npm test         # in another
 ```
 
-26 checks covering the student flow and the board, including the two that would
-be expensive to get wrong: that a dead device can be resumed with its answers
-intact, and that a shuffled paper still maps to the right canonical letter.
+30 checks covering the student flow and the board, including the three that
+would be expensive to get wrong: that a dead device resumes on the right
+question, that going back or skipping ahead is refused by the server, and that
+a shuffled paper still maps to the right canonical letter.
 
 `node scripts/demo-class.js` drives a fake class through a test if you want
 something to look at on the board.

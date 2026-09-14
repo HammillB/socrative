@@ -265,13 +265,25 @@ export async function getResponses(sql, attemptId) {
   );
 }
 
+export async function countResponses(sql, attemptId) {
+  const row = await sql.get(
+    `SELECT COUNT(*) AS n FROM responses WHERE attempt_id = ?`,
+    [attemptId]
+  );
+  return row?.n ?? 0;
+}
+
 /**
  * Record one answer and grade it immediately.
  *
  * Grading on save rather than on submit means a student who never presses
  * Submit -- battery, bell, closed lid -- still has a scored paper.
+ *
+ * `final` is the locked sequential mode: an answer, once given, cannot be
+ * revised. The refusal lives here rather than in the page, because a rule the
+ * browser enforces is not a rule.
  */
-export async function saveResponse(sql, attempt, { questionId, choiceId, msSpent = null }) {
+export async function saveResponse(sql, attempt, { questionId, choiceId, msSpent = null, final = false }) {
   const onPaper = await sql.get(
     `SELECT COALESCE(ai.points, q.points) AS points
        FROM assessment_items ai
@@ -287,6 +299,14 @@ export async function saveResponse(sql, attempt, { questionId, choiceId, msSpent
   );
   if (!choice) throw new Error("that choice is not on that question");
 
+  if (final) {
+    const already = await sql.get(
+      `SELECT 1 AS yes FROM responses WHERE attempt_id = ? AND question_id = ?`,
+      [attempt.id, questionId]
+    );
+    if (already) throw new Error("that question has already been answered");
+  }
+
   const isCorrect = choice.is_correct ? 1 : 0;
   await sql.run(
     `INSERT INTO responses (attempt_id, question_id, choice_id, is_correct, points_earned, ms_spent)
@@ -299,7 +319,13 @@ export async function saveResponse(sql, attempt, { questionId, choiceId, msSpent
           ms_spent      = excluded.ms_spent`,
     [attempt.id, questionId, choiceId, isCorrect, isCorrect ? onPaper.points : 0, msSpent]
   );
-  return { isCorrect: !!isCorrect };
+  return { isCorrect: !!isCorrect, points: isCorrect ? onPaper.points : 0 };
+}
+
+/** The explanation for one question, fetched only after it has been answered. */
+export async function getExplanation(sql, questionId) {
+  const row = await sql.get(`SELECT explanation FROM questions WHERE id = ?`, [questionId]);
+  return row?.explanation ?? null;
 }
 
 export async function submitAttempt(sql, attemptId) {

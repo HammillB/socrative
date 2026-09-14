@@ -9,71 +9,79 @@
     --ground: #f4f6f5; --card: #ffffff; --ink: #18211f; --muted: #5f6f6b;
     --line: #d5ded9; --accent: #0c6a5e; --accent-soft: #e3f0ec;
     --warn-bg: #fdf3e3; --warn-ink: #8a6508; --bad: #a8491a;
+    --right: #10715f; --right-bg: #d9ece6;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0; background: var(--ground); color: var(--ink);
     font: 17px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
   }
-  .wrap { max-width: 760px; margin: 0 auto; padding: 24px 18px 140px; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 24px 18px 40px; }
 
-  h1 { font-size: 26px; margin: 0 0 4px; }
-  .sub { color: var(--muted); margin: 0 0 24px; }
+  h1 { font-size: 25px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 22px; }
 
   /* ---- join ---- */
   .join { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
           padding: 26px; max-width: 420px; margin: 40px auto; }
   label { display: block; font-weight: 600; font-size: 14px; margin: 16px 0 6px; }
-  input {
+  input[type=text] {
     width: 100%; padding: 13px 14px; font-size: 19px; font-family: inherit;
     border: 1px solid var(--line); border-radius: 7px; background: #fff; color: var(--ink);
   }
-  input:focus-visible, button:focus-visible {
+  input:focus-visible, button:focus-visible, .choice:focus-within {
     outline: 3px solid var(--accent); outline-offset: 2px;
   }
   #code { text-transform: uppercase; letter-spacing: 0.1em; }
   button {
-    font: inherit; font-weight: 600; cursor: pointer; border-radius: 7px;
-    border: 1px solid transparent; padding: 13px 22px;
+    font: inherit; font-size: 18px; font-weight: 600; cursor: pointer;
+    border-radius: 7px; border: 1px solid transparent; padding: 14px 26px;
     background: var(--accent); color: #fff;
   }
-  button:disabled { opacity: .55; cursor: default; }
-  .join button { width: 100%; margin-top: 22px; font-size: 18px; }
-
+  button:disabled { opacity: .45; cursor: default; }
+  .join button { width: 100%; margin-top: 22px; }
   .error { color: var(--bad); font-weight: 600; margin-top: 14px; }
 
-  /* ---- questions ---- */
+  /* ---- progress ---- */
+  .meta { display: flex; justify-content: space-between; align-items: baseline;
+          margin-bottom: 10px; }
+  .counter { font-weight: 700; font-size: 15px; letter-spacing: .02em; }
+  .title { color: var(--muted); font-size: 15px; }
+  .track { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden;
+           margin-bottom: 22px; }
+  .fill { height: 100%; background: var(--accent); width: 0; transition: width .25s ease; }
+  @media (prefers-reduced-motion: reduce) { .fill { transition: none; } }
+
+  /* ---- question ---- */
   .q { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
-       padding: 20px 22px; margin-bottom: 16px; }
-  .q-head { display: flex; gap: 12px; align-items: baseline; margin-bottom: 14px; }
-  .q-num { font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
-  .q-stem { font-size: 18px; }
-  .q img, .choice img { max-width: 100%; border-radius: 6px; margin-top: 10px; display: block; }
+       padding: 26px; }
+  .stem { font-size: 20px; line-height: 1.45; margin: 0 0 6px; }
+  .q img { max-width: 100%; border-radius: 6px; margin-top: 14px; display: block; }
 
   .choice {
     display: flex; gap: 13px; align-items: flex-start;
-    padding: 13px 15px; margin-top: 9px; cursor: pointer;
+    padding: 15px 16px; margin-top: 10px; cursor: pointer;
     border: 1px solid var(--line); border-radius: 8px; background: #fff;
   }
   .choice:hover { border-color: var(--accent); }
-  .choice input { width: 21px; height: 21px; margin: 2px 0 0; flex: none; accent-color: var(--accent); }
+  .choice input { width: 22px; height: 22px; margin: 1px 0 0; flex: none; accent-color: var(--accent); }
   .choice.picked { background: var(--accent-soft); border-color: var(--accent); }
   .choice-letter { font-weight: 700; color: var(--muted); flex: none; min-width: 1.2em; }
+  .choice img { max-width: 100%; border-radius: 6px; margin-top: 8px; display: block; }
 
-  /* ---- status bar ---- */
-  .bar {
-    position: fixed; left: 0; right: 0; bottom: 0; background: var(--card);
-    border-top: 1px solid var(--line); padding: 12px 18px;
-    display: flex; gap: 16px; align-items: center; justify-content: space-between;
-  }
-  .bar-inner { max-width: 760px; margin: 0 auto; width: 100%;
-               display: flex; gap: 16px; align-items: center; justify-content: space-between; }
-  .progress { font-size: 15px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .actions { margin-top: 26px; display: flex; gap: 16px; align-items: center;
+             flex-wrap: wrap; }
+  .final-note { color: var(--muted); font-size: 14.5px; }
+
   .offline { background: var(--warn-bg); color: var(--warn-ink); font-weight: 600;
-             padding: 9px 18px; text-align: center; font-size: 15px; }
+             padding: 10px 18px; text-align: center; font-size: 15px; }
+
+  .feedback { margin-top: 18px; padding: 14px 18px; border-radius: 8px; font-size: 16px; }
+  .feedback.yes { background: var(--right-bg); color: var(--right); }
+  .feedback.no  { background: #f7e2d7; color: var(--bad); }
 
   .done { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
-          padding: 40px 26px; text-align: center; margin-top: 50px; }
+          padding: 46px 26px; text-align: center; margin-top: 50px; }
   .score { font-size: 46px; font-weight: 700; color: var(--accent); margin: 14px 0 4px; }
   [hidden] { display: none !important; }
 </style>
@@ -81,36 +89,51 @@
 <body>
 
 <div id="offline" class="offline" hidden>
-  No connection — your answers are being saved on this device and will upload when it returns.
+  No connection. Your answer has not been sent yet — stay on this page, it will
+  keep trying.
 </div>
 
 <div class="wrap">
 
-  <!-- join ------------------------------------------------------------ -->
+  <!-- join ------------------------------------------------------------- -->
   <form id="join" class="join">
     <h1>Class Test</h1>
     <p class="sub">Enter the code on the board and your student number.</p>
     <label for="code">Class code</label>
-    <input id="code" name="code" autocomplete="off" autocapitalize="characters"
+    <input type="text" id="code" autocomplete="off" autocapitalize="characters"
            spellcheck="false" required>
     <label for="student">Student number</label>
-    <input id="student" name="student" inputmode="numeric" autocomplete="off"
+    <input type="text" id="student" inputmode="numeric" autocomplete="off"
            spellcheck="false" required>
     <button type="submit">Start</button>
     <p id="join-error" class="error" hidden></p>
   </form>
 
-  <!-- test ------------------------------------------------------------ -->
+  <!-- one question ----------------------------------------------------- -->
   <main id="test" hidden>
-    <h1 id="title"></h1>
-    <p class="sub" id="resumed" hidden>Welcome back — your answers are still here.</p>
-    <div id="questions"></div>
+    <div class="meta">
+      <span class="counter" id="counter"></span>
+      <span class="title" id="title"></span>
+    </div>
+    <div class="track"><div class="fill" id="fill"></div></div>
+
+    <section class="q">
+      <p class="stem" id="stem"></p>
+      <div id="stem-media"></div>
+      <div id="choices"></div>
+      <div class="feedback" id="feedback" hidden></div>
+      <div class="actions">
+        <button id="submit" type="button" disabled>Submit answer</button>
+        <span class="final-note">This answer is final — you cannot come back to it.</span>
+      </div>
+      <p id="q-error" class="error" hidden></p>
+    </section>
   </main>
 
-  <!-- done ------------------------------------------------------------ -->
+  <!-- finished --------------------------------------------------------- -->
   <section id="done" class="done" hidden>
-    <h1>Handed in</h1>
-    <p class="sub">You can close this page.</p>
+    <h1>All done</h1>
+    <p class="sub">You have answered every question. You can close this page.</p>
     <div id="score-block" hidden>
       <div class="score" id="score"></div>
       <p class="sub" id="score-detail"></p>
@@ -119,49 +142,16 @@
 
 </div>
 
-<div id="bar" class="bar" hidden>
-  <div class="bar-inner">
-    <span class="progress" id="progress"></span>
-    <button id="submit" type="button">Hand in</button>
-  </div>
-</div>
-
 <script>
 (() => {
   "use strict";
-
   const $ = (id) => document.getElementById(id);
-  const STORE = "classroom-test-attempt";
+  const STORE = "classroom-test-token";
+  const LETTERS = "ABCDEFGH";
 
-  let paper = null;         // { token, title, questions, answers }
-  let pending = [];         // answers not yet accepted by the server
-  let flushing = false;
-
-  // --- local persistence ---------------------------------------------------
-  // Every answer is written here the instant it is picked. The network is
-  // treated as a nice-to-have; this is the source of truth until it syncs.
-
-  function save() {
-    try {
-      localStorage.setItem(STORE, JSON.stringify({ paper, pending }));
-    } catch { /* private mode, full disk: carry on, the server still has it */ }
-  }
-
-  function restore() {
-    try {
-      const raw = localStorage.getItem(STORE);
-      if (!raw) return false;
-      const saved = JSON.parse(raw);
-      if (!saved?.paper?.token) return false;
-      paper = saved.paper;
-      pending = saved.pending || [];
-      return true;
-    } catch { return false; }
-  }
-
-  function clearStore() {
-    try { localStorage.removeItem(STORE); } catch {}
-  }
+  let state = null;      // { token, title, total, number, question, finished }
+  let picked = null;     // choice id selected but not yet submitted
+  let sending = false;
 
   // --- network -------------------------------------------------------------
 
@@ -172,154 +162,151 @@
       body: JSON.stringify(body),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || "Something went wrong.");
+    if (!res.ok) { const e = new Error(data.error || "Something went wrong."); e.status = res.status; throw e; }
     return data;
   }
 
-  function setOffline(isOffline) {
-    $("offline").hidden = !isOffline;
-  }
-
-  /** Send queued answers, oldest first. Anything that fails stays queued. */
-  async function flush() {
-    if (flushing || !pending.length) return;
-    flushing = true;
-    try {
-      while (pending.length) {
-        const next = pending[0];
-        await post("/api/answer", { token: paper.token, ...next });
-        pending.shift();
-        save();
-      }
-      setOffline(false);
-    } catch {
-      setOffline(true);
-    } finally {
-      flushing = false;
-    }
-  }
-
-  setInterval(flush, 4000);
-  window.addEventListener("online", flush);
-  window.addEventListener("offline", () => setOffline(true));
+  const setOffline = (yes) => { $("offline").hidden = !yes; };
 
   // --- rendering -----------------------------------------------------------
 
-  /**
-   * Fetch every image before the first question appears.
-   *
-   * Without this, offline tolerance is only half true: a student keeps their
-   * answers through a dropped connection but stares at a broken diagram.
-   */
-  function preloadImages(questions) {
-    const urls = [];
-    for (const q of questions) {
-      if (q.media) urls.push(q.media);
-      for (const c of q.choices) if (c.media) urls.push(c.media);
+  function showQuestion(feedback) {
+    picked = null;
+    $("submit").disabled = true;
+    $("submit").textContent = "Submit answer";
+    $("q-error").hidden = true;
+
+    $("title").textContent = state.title;
+    $("counter").textContent = `Question ${state.number} of ${state.total}`;
+    $("fill").style.width = ((state.number - 1) / state.total * 100) + "%";
+
+    const question = state.question;
+    $("stem").textContent = question.stem;
+
+    const media = $("stem-media");
+    media.textContent = "";
+    if (question.media) {
+      const img = document.createElement("img");
+      img.src = question.media; img.alt = "";
+      media.append(img);
     }
-    return Promise.all(urls.map((url) => new Promise((done) => {
-      const img = new Image();
-      img.onload = img.onerror = done;
-      img.src = url;
-    })));
-  }
 
-  function render() {
-    $("title").textContent = paper.title;
-    $("resumed").hidden = !paper.resumed;
-
-    const host = $("questions");
+    const host = $("choices");
     host.textContent = "";
+    question.choices.forEach((choice, index) => {
+      const label = document.createElement("label");
+      label.className = "choice";
 
-    paper.questions.forEach((question, index) => {
-      const card = document.createElement("section");
-      card.className = "q";
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = "answer";
+      radio.value = choice.id;
 
-      const head = document.createElement("div");
-      head.className = "q-head";
-      const num = document.createElement("span");
-      num.className = "q-num";
-      num.textContent = index + 1 + ".";
-      const stem = document.createElement("span");
-      stem.className = "q-stem";
-      stem.textContent = question.stem;
-      head.append(num, stem);
-      card.append(head);
+      const letter = document.createElement("span");
+      letter.className = "choice-letter";
+      letter.textContent = LETTERS[index];
 
-      if (question.media) {
-        const img = document.createElement("img");
-        img.src = question.media;
-        img.alt = "";
-        card.append(img);
-      }
+      const text = document.createElement("span");
+      text.textContent = choice.text;
 
-      question.choices.forEach((choice, ci) => {
-        const label = document.createElement("label");
-        label.className = "choice";
-
-        const radio = document.createElement("input");
-        radio.type = "radio";
-        radio.name = "q" + question.id;
-        radio.value = choice.id;
-        radio.checked = paper.answers[question.id] === choice.id;
-        if (radio.checked) label.classList.add("picked");
-
-        const letter = document.createElement("span");
-        letter.className = "choice-letter";
-        letter.textContent = "ABCDEFGH"[ci];
-
-        const text = document.createElement("span");
-        text.textContent = choice.text;
-
-        radio.addEventListener("change", () => choose(question.id, choice.id));
-
-        label.append(radio, letter, text);
-        if (choice.media) {
-          const img = document.createElement("img");
-          img.src = choice.media;
-          img.alt = "";
-          label.append(img);
+      radio.addEventListener("change", () => {
+        picked = choice.id;
+        $("submit").disabled = false;
+        for (const el of document.querySelectorAll(".choice")) {
+          el.classList.toggle("picked", el.querySelector("input").checked);
         }
-        card.append(label);
       });
 
-      host.append(card);
+      label.append(radio, letter, text);
+      if (choice.media) {
+        const img = document.createElement("img");
+        img.src = choice.media; img.alt = "";
+        label.append(img);
+      }
+      host.append(label);
     });
 
-    updateProgress();
-  }
-
-  function choose(questionId, choiceId) {
-    paper.answers[questionId] = choiceId;
-    pending.push({ questionId, choiceId });
-    save();
-
-    for (const label of document.querySelectorAll(".choice")) {
-      label.classList.toggle("picked", label.querySelector("input").checked);
+    const box = $("feedback");
+    if (feedback) {
+      box.hidden = false;
+      box.className = "feedback " + (feedback.correct ? "yes" : "no");
+      box.textContent = (feedback.correct ? "Correct. " : "Not quite. ") +
+                        (feedback.explanation || "");
+    } else {
+      box.hidden = true;
     }
-    updateProgress();
-    flush();
+
+    window.scrollTo({ top: 0, behavior: "instant" });
   }
 
-  function updateProgress() {
-    const total = paper.questions.length;
-    const answered = paper.questions.filter((q) => paper.answers[q.id] != null).length;
-    $("progress").textContent = `${answered} of ${total} answered`;
-    $("submit").textContent = answered < total ? "Hand in early" : "Hand in";
+  function showDone(score) {
+    $("test").hidden = true;
+    $("done").hidden = false;
+    if (score && score.showToStudent) {
+      $("score").textContent = score.percent + "%";
+      $("score-detail").textContent = `${score.correct} of ${score.questions} correct`;
+      $("score-block").hidden = false;
+    }
   }
 
-  // --- flow ----------------------------------------------------------------
-
-  async function start(data) {
-    paper = { ...data, answers: data.answers || {} };
-    pending = [];
-    save();
-    await preloadImages(paper.questions);
+  function apply(data, feedback) {
+    state = data;
+    try { localStorage.setItem(STORE, data.token); } catch {}
     $("join").hidden = true;
-    $("test").hidden = false;
-    $("bar").hidden = false;
-    render();
+    if (data.finished) showDone(data.score);
+    else { $("test").hidden = false; showQuestion(feedback); }
   }
+
+  // --- submitting ----------------------------------------------------------
+  //
+  // The answer is not recorded until the server has it, and the next question
+  // only arrives in that same reply. So a failed send must not advance
+  // anything: we keep the student on this question, with their choice still
+  // selected, and keep trying. If the device dies here the question is simply
+  // unanswered, and they get it again when they log back in.
+
+  async function submitAnswer() {
+    if (picked == null || sending) return;
+    sending = true;
+    $("submit").disabled = true;
+    $("submit").textContent = "Sending…";
+    $("q-error").hidden = true;
+
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        const data = await post("/api/answer", {
+          token: state.token,
+          questionId: state.question.id,
+          choiceId: picked,
+        });
+        setOffline(false);
+        sending = false;
+        apply(data, data.feedback);
+        return;
+      } catch (err) {
+        if (err.status && err.status < 500) {          // a refusal, not a dropout
+          sending = false;
+          $("q-error").textContent = err.message;
+          $("q-error").hidden = false;
+          $("submit").disabled = false;
+          $("submit").textContent = "Submit answer";
+          return;
+        }
+        setOffline(true);
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+      }
+    }
+
+    sending = false;
+    $("submit").disabled = false;
+    $("submit").textContent = "Try again";
+    $("q-error").textContent = "Could not reach the server. Your answer has not been saved yet.";
+    $("q-error").hidden = false;
+  }
+
+  $("submit").addEventListener("click", submitAnswer);
+
+  // --- joining and resuming ------------------------------------------------
 
   $("join").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -329,11 +316,10 @@
     button.disabled = true;
     button.textContent = "Starting…";
     try {
-      const data = await post("/api/join", {
+      apply(await post("/api/join", {
         code: $("code").value.trim().toUpperCase(),
         studentNumber: $("student").value.trim(),
-      });
-      await start(data);
+      }));
     } catch (err) {
       error.textContent = err.message;
       error.hidden = false;
@@ -343,88 +329,30 @@
     }
   });
 
-  $("submit").addEventListener("click", async () => {
-    const total = paper.questions.length;
-    const answered = paper.questions.filter((q) => paper.answers[q.id] != null).length;
-    const missing = total - answered;
-    const warning = missing
-      ? `You have ${missing} question${missing === 1 ? "" : "s"} unanswered. Hand in anyway?`
-      : "Hand your test in? You will not be able to change your answers.";
-    if (!confirm(warning)) return;
-
-    $("submit").disabled = true;
-    await flush();
-    if (pending.length) {
-      alert("Some answers have not uploaded yet. Stay on this page until the warning clears, then try again.");
-      $("submit").disabled = false;
-      return;
-    }
-    try {
-      const { score } = await post("/api/submit", { token: paper.token });
-      clearStore();
-      $("test").hidden = true;
-      $("bar").hidden = true;
-      $("done").hidden = false;
-      if (score && score.showToStudent) {
-        $("score").textContent = score.percent + "%";
-        $("score-detail").textContent = `${score.correct} of ${score.questions} correct`;
-        $("score-block").hidden = false;
-      }
-    } catch (err) {
-      alert(err.message);
-      $("submit").disabled = false;
-    }
-  });
-
   // Log losing focus. Not lockdown -- a browser tab cannot be locked down --
   // but it is a signal worth having when a score looks surprising.
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden && paper) {
+    if (document.hidden && state?.token) {
       navigator.sendBeacon?.(
         "/api/event",
-        new Blob([JSON.stringify({ token: paper.token, kind: "focus_lost" })],
+        new Blob([JSON.stringify({ token: state.token, kind: "focus_lost" })],
                  { type: "application/json" })
       );
     }
   });
 
-  /**
-   * A reload, or a closed lid, picks straight back up.
-   *
-   * The local copy gets us on screen immediately, but the server is asked to
-   * confirm it: the test may have been closed, already handed in, or answered
-   * further on another machine. Server answers win. If we are offline the
-   * local copy stands and syncs later.
-   */
-  async function resume() {
-    $("join").hidden = true;
-    $("test").hidden = false;
-    $("bar").hidden = false;
-    await preloadImages(paper.questions);
-    render();
-    await flush();
-
+  // A reload, or a new device, resumes on the question the server says they
+  // reached. Nothing about the position is trusted to the browser.
+  (async () => {
+    let token = null;
+    try { token = localStorage.getItem(STORE); } catch {}
+    if (!token) return;
     try {
-      const fresh = await post("/api/resume", { token: paper.token });
-      paper = { ...fresh, answers: { ...fresh.answers, ...paper.answers } };
-      for (const queued of pending) paper.answers[queued.questionId] = queued.choiceId;
-      save();
-      await preloadImages(paper.questions);
-      render();
-      setOffline(false);
-    } catch (err) {
-      // 404/409 mean this attempt is finished or gone: clear it and start over
-      // rather than leaving a student answering a test that no longer exists.
-      if (/handed in|closed|not found/i.test(err.message)) {
-        clearStore();
-        location.reload();
-        return;
-      }
-      setOffline(true);   // offline: carry on with what is on this device
+      apply(await post("/api/resume", { token }));
+    } catch {
+      try { localStorage.removeItem(STORE); } catch {}   // finished, closed, or stale
     }
-  }
-
-  if (restore()) resume();
+  })();
 })();
 </script>
 </body>
