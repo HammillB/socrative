@@ -5,9 +5,10 @@ A self-hosted replacement for Socrative, for multiple-choice science tests.
 Students join with a class code and their student number, take the test on a
 Chromebook, and it grades itself. Everything runs on your own database.
 
-**Status: Phase 1.** The student side works end to end — join, answer, resume
-after a dropped connection, hand in, score. The teacher dashboard is Phase 2;
-for now tests are set up from the command line.
+**Status: Phase 2, in progress.** The student side works end to end — join,
+answer, resume after a dead device, hand in, score — and the teacher's live
+results board is running. Tests are still set up from the command line;
+authoring and sign-in are next.
 
 ---
 
@@ -99,18 +100,21 @@ Retrofitting that later would mean revisiting every query and hoping none was
 missed — so it is there from the first line of schema.
 
 **All the SQL lives in `src/db.js`.** The app is handed a driver rather than
-opening a database itself, and there are two drivers: `better-sqlite3` for a
-local file and Cloudflare D1 for production. The SQL is identical, so moving
-between them is a deploy change, not a rewrite.
+opening a database itself, and there are two drivers: Node's built-in SQLite
+for a local file and Cloudflare D1 for production. The SQL is identical, so
+moving between them is a deploy change, not a rewrite.
 
 ```
 schema.sql          the whole data model, with the reasoning in comments
 src/db.js           every SQL statement in the application
 src/app.js          routes, seeded shuffling, paper assembly
-src/dev-server.js   local Node server (the D1 entry point is Phase 2)
+src/dev-server.js   local Node server (the D1 entry point is still to come)
 scripts/init.js     create the database, add a teacher
 scripts/import.js   load a roster, load a quiz, open a session
+scripts/e2e-test.js the test suite
+scripts/demo-class.js  drive a fake class through a test
 web/test.html       the student test page
+web/live.html       the teacher's live results board
 ```
 
 ### Things worth knowing
@@ -160,5 +164,9 @@ something to look at on the board.
 
 ## Next
 
-Phase 2: teacher dashboard and live results grid, sessions you can open and
-close from the browser, CSV export, regrade-a-question, and Google sign-in.
+Question authoring in the browser, Google sign-in for teachers, CSV export for
+the gradebook, regrade-a-question, and the Cloudflare entry point.
+
+Then the features that are the actual reason for building this: item analysis
+after every test, standards mastery across the year, automatic accommodations,
+and retakes generated from what each student missed.
