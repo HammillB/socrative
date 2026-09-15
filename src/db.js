@@ -872,7 +872,9 @@ export async function getItemAnalysis(sql, dashboardToken) {
     const choices = question.choiceMeta.map((c) => {
       const stat = counts.get(c.id) ?? { count: 0, topCount: 0, bottomCount: 0 };
       return {
-        letter: c.letter, text: c.text, media: c.media, isCorrect: c.isCorrect,
+        // id is what a regrade request names -- everything else here is
+        // just for display.
+        id: c.id, letter: c.letter, text: c.text, media: c.media, isCorrect: c.isCorrect,
         count: stat.count,
         percent: answered ? Math.round((stat.count / answered) * 1000) / 10 : 0,
         topCount: stat.topCount, bottomCount: stat.bottomCount,
@@ -961,6 +963,90 @@ function flagsFor({ difficulty, discrimination, groupSize, choices }) {
   }
 
   return flags;
+}
+
+/** The teacher who owns the session behind a dashboard link, or null. */
+export async function findTeacherIdByDashboardToken(sql, dashboardToken) {
+  const row = await sql.get(
+    `SELECT teacher_id FROM sessions WHERE dashboard_token = ?`,
+    [dashboardToken]
+  );
+  return row?.teacher_id ?? null;
+}
+
+/**
+ * Fix a question's answer key, and rescore every response ever recorded
+ * for it -- not just on the test a teacher happened to be looking at.
+ *
+ * The correct answer is a property of the QUESTION, not of any one time it
+ * was asked. If the key was wrong, it was wrong everywhere that question
+ * has ever appeared: past administrations, a different room, an attempt
+ * still in progress right now. This fixes it in every one of those places
+ * in a single pass, rather than only the session whose report a teacher
+ * happened to be reading when they noticed. There is deliberately no
+ * "just this test" option -- a question does not have two correct answers
+ * depending on which class asked it.
+ *
+ * Scoped to the TEACHER, not the session: any of that teacher's questions
+ * can be fixed from any of their sessions' dashboards, since the answer
+ * key was never session-specific to begin with.
+ */
+export async function regradeQuestion(sql, teacherId, { questionId, correctChoiceId }) {
+  const question = await sql.get(
+    `SELECT id, teacher_id FROM questions WHERE id = ?`,
+    [questionId]
+  );
+  if (!question || question.teacher_id !== teacherId) {
+    throw new Error("That question was not found.");
+  }
+  const choice = await sql.get(
+    `SELECT id FROM choices WHERE id = ? AND question_id = ?`,
+    [correctChoiceId, questionId]
+  );
+  if (!choice) throw new Error("That answer does not belong to this question.");
+
+  // Exactly one correct choice, the same rule createQuestion enforces when
+  // a question is first written.
+  await sql.run(`UPDATE choices SET is_correct = 0 WHERE question_id = ?`, [questionId]);
+  await sql.run(`UPDATE choices SET is_correct = 1 WHERE id = ?`, [correctChoiceId]);
+
+  // Every response this question has ever received, anywhere, together with
+  // what that particular test was worth -- points can be overridden per
+  // assessment, so each response is priced by the assessment it actually
+  // belonged to, the same lookup saveResponse used when it was first graded.
+  const responses = await sql.all(
+    `SELECT r.id, r.attempt_id, r.choice_id, r.is_correct AS was_correct,
+            COALESCE(ai.points, q.points) AS points
+       FROM responses r
+       JOIN attempts a  ON a.id = r.attempt_id
+       JOIN sessions s  ON s.id = a.session_id
+       JOIN questions q ON q.id = r.question_id
+       LEFT JOIN assessment_items ai
+              ON ai.assessment_id = s.assessment_id AND ai.question_id = r.question_id
+      WHERE r.question_id = ?`,
+    [questionId]
+  );
+
+  let scoresChanged = 0;
+  const attemptsAffected = new Set();
+  for (const r of responses) {
+    const isCorrect = r.choice_id === correctChoiceId ? 1 : 0;
+    const pointsEarned = isCorrect ? r.points : 0;
+    if (isCorrect !== r.was_correct) {
+      scoresChanged++;
+      attemptsAffected.add(r.attempt_id);
+    }
+    await sql.run(
+      `UPDATE responses SET is_correct = ?, points_earned = ? WHERE id = ?`,
+      [isCorrect, pointsEarned, r.id]
+    );
+  }
+
+  return {
+    responsesRescored: responses.length,
+    scoresChanged,
+    attemptsAffected: attemptsAffected.size,
+  };
 }
 
 export async function setSessionState(sql, dashboardToken, state) {

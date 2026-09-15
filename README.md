@@ -130,6 +130,35 @@ Scoped to one **administration**, not a quiz: the same quiz launched locked
 for a graded test and open for a review the next day gets two separate
 reports, because the students and their answers are different each time.
 
+## Fixing a wrong answer key
+
+Every choice row in the item analysis report has a **Mark correct** button.
+Click it, confirm, and two things happen: the question's key changes, and
+every response ever recorded for it is rescored against the new key --
+right now, not just for whoever takes the test next.
+
+```
+A  0                               1   9%    top 0   bottom 1
+B  32                    Correct  10  91%    top 5   bottom 4  [Mark correct]
+C  212                             0   0%    top 0   bottom 0  [Mark correct]
+...
+Fixed. 11 responses rescored, 6 of them changed right/wrong for 6 students.
+```
+
+**This is global, on purpose, with no "just this test" option.** The correct
+answer is a property of the *question*, not of the one time it happened to
+be asked. If a key was wrong, it was wrong every time that question has ever
+appeared -- a different room, a past administration, an attempt still in
+progress right now -- and this fixes every one of those in a single pass
+rather than leaving old attempts quietly sitting on the wrong answer. It is
+the reason this exists at all: Socrative has no equivalent, so a wrong key
+found after the fact used to mean manually re-grading by hand or leaving it
+wrong.
+
+Reached through the same dashboard link as the rest of the report -- there
+is no separate sign-in for it, only a confirmation naming the choice before
+anything changes.
+
 ## Launching a test
 
 Import puts the questions in; **launch** decides how a particular run behaves.
@@ -371,7 +400,7 @@ npm run dev      # in one terminal
 npm test         # in another
 ```
 
-94 checks covering both delivery modes, the launch console and the board, including the ones that
+103 checks covering both delivery modes, the launch console and the board, including the ones that
 would be expensive to get wrong: that a dead device resumes in the right
 place, that going back and skipping ahead are refused by the server in
 sequential mode, that an open test cannot be handed in with blanks, that

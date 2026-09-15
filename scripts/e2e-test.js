@@ -602,6 +602,93 @@ if (!dashboardToken) {
     boardTricky?.discrimination === trickyQ.discrimination,
     `board=${boardTricky?.discrimination} report=${trickyQ.discrimination}`);
 
+  // --- 7e. regrade-a-question --------------------------------------------------
+  //
+  // firstQuestionId already has responses recorded in BOTH rooms: every
+  // sequential student in ROOM answered it on their way through, and the open
+  // student in OPEN_ROOM who "filled in the rest" answered it too. That makes
+  // it the right question to prove the one thing that matters here -- a fixed
+  // key rescopes EVERYWHERE the question was ever asked, not just the session
+  // whose report happened to be open.
+  //
+  // wrongChoice is currently marked incorrect (100001 picked it and was told
+  // so). Flipping the key TO it is a clean, checkable inversion: every
+  // response now becomes correct exactly when it picked wrongChoice, and
+  // wrong otherwise -- true regardless of which room or attempt it came from,
+  // so it can be checked as one invariant over every row rather than needing
+  // to predict a count per room.
+
+  const beforeRegrade = new DatabaseSync(DB);
+  const responsesBefore = beforeRegrade
+    .prepare(`SELECT id FROM responses WHERE question_id = ?`).all(firstQuestionId);
+  beforeRegrade.close();
+
+  const badChoice = await post(`/api/live/${dashboardToken}/regrade`, {
+    questionId: firstQuestionId, correctChoiceId: 999999,
+  });
+  check("regrading to a choice that does not belong to the question is refused",
+    badChoice.status === 400);
+
+  const badToken = await fetch(`${BASE}/api/live/not-a-real-token/regrade`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ questionId: firstQuestionId, correctChoiceId: wrongChoice.id }),
+  });
+  check("regrading through an invented dashboard token is refused", badToken.status === 404);
+
+  const regradeReq = await post(`/api/live/${dashboardToken}/regrade`, {
+    questionId: firstQuestionId, correctChoiceId: wrongChoice.id,
+  });
+  check("regrading is accepted", regradeReq.status === 200, regradeReq.body.error);
+  check("it reports rescoring every response that already existed",
+    regradeReq.body.responsesRescored === responsesBefore.length,
+    `reported=${regradeReq.body.responsesRescored} actual=${responsesBefore.length}`);
+  check("at least one score actually changed",
+    regradeReq.body.scoresChanged > 0, `scoresChanged=${regradeReq.body.scoresChanged}`);
+
+  const afterRegrade = new DatabaseSync(DB);
+  const keyRow = afterRegrade
+    .prepare(`SELECT id FROM choices WHERE question_id = ? AND is_correct = 1`).get(firstQuestionId);
+  check("the answer key itself flipped to the new choice",
+    keyRow?.id === wrongChoice.id, `key is now choice ${keyRow?.id}`);
+
+  const stillOneKey = afterRegrade
+    .prepare(`SELECT COUNT(*) AS n FROM choices WHERE question_id = ? AND is_correct = 1`)
+    .get(firstQuestionId).n;
+  check("exactly one choice is marked correct after the flip", stillOneKey === 1);
+
+  // The invariant, checked across every response to this question, in
+  // whichever room or attempt it happened to belong to.
+  const allResponses = afterRegrade
+    .prepare(`SELECT choice_id, is_correct FROM responses WHERE question_id = ?`)
+    .all(firstQuestionId);
+  const mismatched = allResponses.filter(
+    (r) => r.is_correct !== (r.choice_id === wrongChoice.id ? 1 : 0)
+  ).length;
+  check("every response, in every room, is now graded against the new key",
+    mismatched === 0, `${mismatched} of ${allResponses.length} response(s) disagree`);
+  afterRegrade.close();
+
+  // A different endpoint, in a different room's report, should see the fix
+  // without needing to be told about it separately.
+  const openTokenDb = new DatabaseSync(DB);
+  const openDashboardToken = openTokenDb.prepare(`
+    SELECT s.dashboard_token FROM sessions s
+      JOIN sections sec ON sec.id = s.section_id
+     WHERE LOWER(sec.name) = LOWER(?) AND s.state <> 'closed'
+     ORDER BY s.created_at DESC LIMIT 1`).get(OPEN_ROOM)?.dashboard_token;
+  // The board reports a CANONICAL letter (choices.position), not any one
+  // student's shuffled view -- shownChoices earlier is 100001's own shuffle
+  // of this question, which is not guaranteed to match the DB's own order.
+  const wrongChoicePosition = openTokenDb
+    .prepare(`SELECT position FROM choices WHERE id = ?`).get(wrongChoice.id)?.position;
+  openTokenDb.close();
+
+  const openBoard = await (await fetch(`${BASE}/api/live/${openDashboardToken}`)).json();
+  const openTricky = openBoard.questions.find((q) => q.id === firstQuestionId);
+  check("the OTHER room's live board shows the corrected answer letter too",
+    openTricky?.correctLetter === "ABCDEFGH"[wrongChoicePosition],
+    `open room shows ${openTricky?.correctLetter}, expected ${"ABCDEFGH"[wrongChoicePosition]}`);
+
   // --- 7b. Finish Activity -- the live board's one irreversible action -----
   //
   // Run last on purpose: it closes ROOM's session, so nothing after this can

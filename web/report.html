@@ -97,6 +97,16 @@
   .ctable .letter { font-weight: 700; width: 1.6em; display: inline-block; }
   .ctable img { max-width: 160px; border-radius: 4px; display: block; margin-top: 4px; }
 
+  button.regrade { font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+                    white-space: nowrap; padding: 5px 11px; border-radius: 6px;
+                    border: 1px solid var(--line); background: #fff; color: var(--muted); }
+  button.regrade:hover { border-color: var(--bad); color: var(--bad); background: var(--bad-bg); }
+  button.regrade:disabled { opacity: .5; cursor: default; }
+  .regrade-status { max-width: 68ch; margin: 12px 0 0; padding: 11px 14px; border-radius: 7px;
+                     font-size: 13.5px; line-height: 1.5; }
+  .regrade-status.ok  { background: var(--good-bg); color: var(--good); }
+  .regrade-status.err { background: var(--bad-bg); color: var(--bad); }
+
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -152,9 +162,56 @@
   let report = null;
   let order = "flagged";
   const expanded = new Set();
+  let regrading = false;
+  // Persists across render() -- buildDetail rebuilds the status <p> fresh
+  // every time, so without this the message would vanish the instant load()
+  // re-renders the page with the corrected numbers.
+  const regradeMessages = new Map();   // questionId -> { level: "ok"|"err", text }
 
   const SEVERITY = { critical: 3, warning: 2, good: 1, info: 0 };
   const LEVEL_LABEL = { critical: "Check the key", warning: "Needs a look", good: "Strong item", info: "Note" };
+
+  /**
+   * Fix a question's key and rescore everything it has ever been asked on.
+   * Global on purpose: the correct answer is a property of the question,
+   * not of the one test whose report happens to be open right now.
+   */
+  async function regrade(question, choice) {
+    if (regrading) return;
+    const warning =
+      `Mark "${choice.letter}. ${choice.text}" as the correct answer for this question?\n\n` +
+      `This rescores every response ever recorded for it -- in this test and ` +
+      `any other one it has been used in, finished or still in progress -- ` +
+      `not just what is shown in this report.`;
+    if (!confirm(warning)) return;
+
+    regrading = true;
+    try {
+      const res = await fetch(`/api/live/${encodeURIComponent(token)}/regrade`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ questionId: question.id, correctChoiceId: choice.id }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || "Could not regrade this question.");
+
+      const changed = body.scoresChanged
+        ? `, ${body.scoresChanged} of them changed right/wrong for ` +
+          `${body.attemptsAffected} student${body.attemptsAffected === 1 ? "" : "s"}.`
+        : " -- none changed which answer counted as correct.";
+      regradeMessages.set(question.id, {
+        level: "ok",
+        text: `Fixed. ${body.responsesRescored} response` +
+          `${body.responsesRescored === 1 ? "" : "s"} rescored${changed}`,
+      });
+      await load();   // refetches; the row stays expanded, numbers update
+    } catch (err) {
+      regradeMessages.set(question.id, { level: "err", text: err.message });
+      render();       // nothing changed server-side -- just show why
+    } finally {
+      regrading = false;
+    }
+  }
 
   async function load() {
     const res = await fetch(`/api/report/${encodeURIComponent(token)}`);
@@ -322,7 +379,7 @@
     table.className = "ctable";
     table.innerHTML =
       "<thead><tr><th>Answer</th><th class='num'>Picked</th><th class='num'>% of class</th>" +
-      "<th class='num'>Top group</th><th class='num'>Bottom group</th></tr></thead>";
+      "<th class='num'>Top group</th><th class='num'>Bottom group</th><th></th></tr></thead>";
     const body = document.createElement("tbody");
 
     for (const choice of q.choices) {
@@ -364,11 +421,32 @@
       bottom.className = "num";
       bottom.textContent = q.answered ? choice.bottomCount : "—";
 
-      tr.append(answer, picked, pct, top, bottom);
+      const action = document.createElement("td");
+      if (!choice.isCorrect) {
+        const fix = document.createElement("button");
+        fix.type = "button";
+        fix.className = "regrade";
+        fix.textContent = "Mark correct";
+        fix.addEventListener("click", () => regrade(q, choice));
+        action.append(fix);
+      }
+
+      tr.append(answer, picked, pct, top, bottom, action);
       body.append(tr);
     }
     table.append(body);
     nodes.push(table);
+
+    const status = document.createElement("p");
+    status.className = "regrade-status";
+    const msg = regradeMessages.get(q.id);
+    if (msg) {
+      status.classList.add(msg.level);
+      status.textContent = msg.text;
+    } else {
+      status.hidden = true;
+    }
+    nodes.push(status);
 
     return nodes;
   }

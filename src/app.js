@@ -454,6 +454,36 @@ export function createApp({ getDriver, staticHandler }) {
     return c.json(report);
   });
 
+  /**
+   * Fix a question's answer key and rescore every response it has ever
+   * received -- the one write action reached through the dashboard token
+   * rather than only reads. Authorised the same way the report and the
+   * board already are: whoever holds this session's link already sees the
+   * full key and every response, so fixing the key needs no separate
+   * sign-in. It still checks the question belongs to the SAME teacher who
+   * owns this session, not merely that a valid token was supplied.
+   */
+  app.post("/api/live/:token/regrade", async (c) => {
+    const sql = c.get("sql");
+    const teacherId = await db.findTeacherIdByDashboardToken(sql, c.req.param("token"));
+    if (!teacherId) return fail(c, "No such dashboard.", 404);
+
+    const { questionId, correctChoiceId } = await c.req.json().catch(() => ({}));
+    if (!questionId || !correctChoiceId) {
+      return fail(c, "questionId and correctChoiceId are both required.");
+    }
+
+    try {
+      const result = await db.regradeQuestion(sql, teacherId, {
+        questionId: Number(questionId),
+        correctChoiceId: Number(correctChoiceId),
+      });
+      return c.json({ regraded: true, ...result });
+    } catch (err) {
+      return fail(c, err.message);
+    }
+  });
+
   // ------------------------------------------------- the teacher's console
   //
   // Reached by an unguessable per-teacher link, the same interim arrangement
