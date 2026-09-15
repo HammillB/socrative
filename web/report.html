@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Item Analysis</title>
+<style>
+  :root {
+    --ground: #f1f4f3; --card: #fff; --ink: #18211f; --muted: #66756f;
+    --line: #d5ded9; --line-soft: #e8eeeb; --accent: #0c6a5e; --accent-soft: #e3f0ec;
+    --good: #10715f; --good-bg: #d9ece6;
+    --warn: #8a6508; --warn-bg: #fbf0d8;
+    --bad: #a8491a; --bad-bg: #f7e2d7;
+    --info: #4a6a72; --info-bg: #e4eef0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 26px 20px 80px; }
+
+  header { display: flex; justify-content: space-between; align-items: flex-start;
+           gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+  h1 { font-size: 22px; margin: 0 0 3px; }
+  .sub { color: var(--muted); font-size: 14.5px; }
+  a.back { color: var(--accent); font-weight: 600; text-decoration: none; font-size: 14px; }
+  a.back:hover { text-decoration: underline; }
+
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+           padding: 20px 22px; margin-bottom: 18px; }
+
+  /* method note + controls */
+  .toolbar { display: flex; justify-content: space-between; align-items: center;
+             gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+  .method { color: var(--muted); font-size: 13.5px; max-width: 56ch; }
+  .method b { color: var(--ink); }
+  .order { display: flex; gap: 8px; }
+  .order button { font: inherit; font-weight: 600; font-size: 13.5px; cursor: pointer;
+                  padding: 7px 13px; border-radius: 6px; border: 1px solid var(--line);
+                  background: #fff; color: var(--ink); }
+  .order button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  .summary { display: flex; gap: 22px; flex-wrap: wrap; align-items: baseline;
+             padding-bottom: 16px; margin-bottom: 4px; border-bottom: 1px solid var(--line-soft); }
+  .summary .n { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .summary .lbl { color: var(--muted); font-size: 13px; }
+  .summary .stat { display: flex; flex-direction: column; }
+
+  .empty { text-align: center; padding: 40px 20px; color: var(--muted); }
+
+  /* question rows */
+  .qrow { border-bottom: 1px solid var(--line-soft); }
+  .qrow:last-child { border-bottom: 0; }
+  .qhead { display: grid; grid-template-columns: 34px 1fr 70px 70px 1fr 20px;
+           gap: 14px; align-items: center; padding: 13px 4px; cursor: pointer;
+           background: none; border: 0; width: 100%; text-align: left; font: inherit; color: inherit; }
+  .qhead:hover { background: var(--ground); }
+  .qnum { font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .qstem { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .qstat { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .qstat .lbl { display: block; font-weight: 400; font-size: 10.5px; color: var(--muted);
+                text-transform: uppercase; letter-spacing: .04em; }
+  .chev { color: var(--muted); transition: transform .15s; }
+  .qrow.expanded .chev { transform: rotate(90deg); }
+
+  .badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
+           border-radius: 20px; font-size: 12.5px; font-weight: 700; white-space: nowrap; }
+  .badge.critical { background: var(--bad-bg); color: var(--bad); }
+  .badge.warning  { background: var(--warn-bg); color: var(--warn); }
+  .badge.good     { background: var(--good-bg); color: var(--good); }
+  .badge.info     { background: var(--info-bg); color: var(--info); }
+  .badge .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+  .detail { display: none; padding: 6px 4px 22px 48px; }
+  .qrow.expanded .detail { display: block; }
+  .full-stem { font-size: 16px; line-height: 1.5; margin: 0 0 6px; max-width: 68ch; }
+  .full-stem img { max-width: 100%; border-radius: 6px; margin-top: 10px; display: block; }
+
+  .flaglist { list-style: none; margin: 14px 0 18px; padding: 0; max-width: 68ch; }
+  .flaglist li { display: flex; gap: 9px; align-items: flex-start; margin-bottom: 8px;
+                 font-size: 14px; line-height: 1.45; }
+  .flaglist .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex: none; }
+  .flaglist .critical .dot { background: var(--bad); }
+  .flaglist .warning .dot  { background: var(--warn); }
+  .flaglist .good .dot     { background: var(--good); }
+  .flaglist .info .dot     { background: var(--info); }
+
+  .ctable { border-collapse: collapse; width: 100%; max-width: 720px; }
+  .ctable th, .ctable td { text-align: left; padding: 7px 10px; font-size: 13.5px;
+                            border-bottom: 1px solid var(--line-soft); }
+  .ctable th { font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+               color: var(--muted); font-weight: 700; }
+  .ctable td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .ctable tr.correct { background: var(--good-bg); }
+  .ctable tr.flagged:not(.correct) { background: var(--warn-bg); }
+  .ctable .letter { font-weight: 700; width: 1.6em; display: inline-block; }
+  .ctable img { max-width: 160px; border-radius: 4px; display: block; margin-top: 4px; }
+
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1 id="title">Item Analysis</h1>
+      <div class="sub" id="subtitle"></div>
+    </div>
+    <a class="back" id="board-link" href="#">&larr; Back to the live board</a>
+  </header>
+
+  <section class="panel">
+    <div class="toolbar">
+      <p class="method">
+        Difficulty and discrimination, computed the standard way: students are
+        ranked by total score and split into a top and bottom group; <b>difficulty</b>
+        is how many got a question right, <b>discrimination</b> is how much better the
+        top group did on it than the bottom group. Based only on
+        <b>completed</b> papers.
+      </p>
+      <div class="order" id="order" role="group" aria-label="Order questions by">
+        <button data-order="flagged" class="on" type="button">Flagged first</button>
+        <button data-order="position" type="button">Question order</button>
+      </div>
+    </div>
+
+    <div class="summary" id="summary"></div>
+  </section>
+
+  <section class="panel" id="questions"></section>
+
+  <p class="empty" id="empty" hidden></p>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const token = location.hash.slice(1);
+
+  if (!token) {
+    $("empty").textContent =
+      "This link is missing its report code. Use the link printed alongside the live board.";
+    $("empty").hidden = false;
+    $("questions").hidden = true;
+    return;
+  }
+  $("board-link").href = `/live.html#${token}`;
+
+  let report = null;
+  let order = "flagged";
+  const expanded = new Set();
+
+  const SEVERITY = { critical: 3, warning: 2, good: 1, info: 0 };
+  const LEVEL_LABEL = { critical: "Check the key", warning: "Needs a look", good: "Strong item", info: "Note" };
+
+  async function load() {
+    const res = await fetch(`/api/report/${encodeURIComponent(token)}`);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      $("empty").textContent = body.error || "Could not load this report.";
+      $("empty").hidden = false;
+      $("questions").hidden = true;
+      return;
+    }
+    report = await res.json();
+    render();
+  }
+
+  function fmtP(d) {
+    return d.difficulty === null ? "—" : Math.round(d.difficulty * 100) + "%";
+  }
+  function fmtD(d) {
+    if (d.discrimination === null) return "—";
+    const v = d.discrimination;
+    return (v > 0 ? "+" : "") + v.toFixed(2);
+  }
+
+  function badge(verdict) {
+    const span = document.createElement("span");
+    span.className = "badge " + verdict.level;
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    span.append(dot, document.createTextNode(LEVEL_LABEL[verdict.level] ?? verdict.level));
+    return span;
+  }
+
+  function render() {
+    $("title").textContent = `Item Analysis — ${report.session.title}`;
+    $("subtitle").textContent =
+      `Room ${report.session.room ?? "—"} · ${report.students} paper` +
+      `${report.students === 1 ? "" : "s"} completed` +
+      (report.groupSize
+        ? ` · comparing the top ${report.groupSize} against the bottom ${report.groupSize}`
+        : "");
+
+    // --- summary strip ---
+    const flaggedCount = report.questions.filter(
+      (q) => q.verdict.level === "critical" || q.verdict.level === "warning"
+    ).length;
+    const summary = $("summary");
+    summary.textContent = "";
+    const stats = [
+      [report.questions.length, "questions"],
+      [flaggedCount, flaggedCount === 1 ? "flagged for review" : "flagged for review"],
+      [report.students, report.students === 1 ? "paper completed" : "papers completed"],
+    ];
+    for (const [n, label] of stats) {
+      const stat = document.createElement("div");
+      stat.className = "stat";
+      const num = document.createElement("span");
+      num.className = "n";
+      if (label.includes("flagged") && n > 0) num.style.color = "var(--warn)";
+      num.textContent = n;
+      const lbl = document.createElement("span");
+      lbl.className = "lbl";
+      lbl.textContent = label;
+      stat.append(num, lbl);
+      summary.append(stat);
+    }
+
+    // --- question list ---
+    const host = $("questions");
+    host.textContent = "";
+
+    if (!report.questions.length) {
+      $("empty").textContent = "This test has no questions.";
+      $("empty").hidden = false;
+      return;
+    }
+    $("empty").hidden = true;
+
+    const ordered = [...report.questions];
+    if (order === "flagged") {
+      ordered.sort((a, b) =>
+        SEVERITY[b.verdict.level] - SEVERITY[a.verdict.level] || a.position - b.position
+      );
+    } else {
+      ordered.sort((a, b) => a.position - b.position);
+    }
+
+    for (const q of ordered) {
+      const row = document.createElement("div");
+      row.className = "qrow" + (expanded.has(q.id) ? " expanded" : "");
+
+      const head = document.createElement("button");
+      head.type = "button";
+      head.className = "qhead";
+
+      const num = document.createElement("span");
+      num.className = "qnum";
+      num.textContent = q.position + 1;
+
+      const stem = document.createElement("span");
+      stem.className = "qstem";
+      stem.textContent = q.stem;
+
+      const p = document.createElement("span");
+      p.className = "qstat";
+      p.innerHTML = `<span class="lbl">Difficulty</span>`;
+      p.append(fmtP(q));
+
+      const d = document.createElement("span");
+      d.className = "qstat";
+      d.innerHTML = `<span class="lbl">Discrimination</span>`;
+      d.append(fmtD(q));
+
+      const verdictHost = document.createElement("span");
+      verdictHost.append(badge(q.verdict));
+
+      const chev = document.createElement("span");
+      chev.className = "chev";
+      chev.textContent = "›";
+
+      head.append(num, stem, p, d, verdictHost, chev);
+      head.addEventListener("click", () => {
+        expanded.has(q.id) ? expanded.delete(q.id) : expanded.add(q.id);
+        render();
+      });
+
+      const detail = document.createElement("div");
+      detail.className = "detail";
+      detail.append(...buildDetail(q));
+
+      row.append(head, detail);
+      host.append(row);
+    }
+  }
+
+  function buildDetail(q) {
+    const nodes = [];
+
+    const stem = document.createElement("p");
+    stem.className = "full-stem";
+    stem.textContent = q.stem;
+    nodes.push(stem);
+    if (q.media) {
+      const img = document.createElement("img");
+      img.src = q.media; img.alt = "";
+      stem.append(img);
+    }
+
+    if (q.flags.length) {
+      const list = document.createElement("ul");
+      list.className = "flaglist";
+      for (const flag of q.flags) {
+        const li = document.createElement("li");
+        li.className = flag.level;
+        const dot = document.createElement("span");
+        dot.className = "dot";
+        const text = document.createElement("span");
+        text.textContent = flag.text;
+        li.append(dot, text);
+        list.append(li);
+      }
+      nodes.push(list);
+    }
+
+    const table = document.createElement("table");
+    table.className = "ctable";
+    table.innerHTML =
+      "<thead><tr><th>Answer</th><th class='num'>Picked</th><th class='num'>% of class</th>" +
+      "<th class='num'>Top group</th><th class='num'>Bottom group</th></tr></thead>";
+    const body = document.createElement("tbody");
+
+    for (const choice of q.choices) {
+      const tr = document.createElement("tr");
+      if (choice.isCorrect) tr.className = "correct";
+      else if (choice.flagged) tr.className = "flagged";
+
+      const answer = document.createElement("td");
+      const letter = document.createElement("span");
+      letter.className = "letter";
+      letter.textContent = choice.letter;
+      answer.append(letter, document.createTextNode(choice.text));
+      if (choice.isCorrect) {
+        const tag = document.createElement("span");
+        tag.style.cssText = "margin-left:8px;font-size:11px;font-weight:700;color:var(--good);" +
+                             "text-transform:uppercase;letter-spacing:.04em";
+        tag.textContent = "Correct";
+        answer.append(tag);
+      }
+      if (choice.media) {
+        const img = document.createElement("img");
+        img.src = choice.media; img.alt = "";
+        answer.append(img);
+      }
+
+      const picked = document.createElement("td");
+      picked.className = "num";
+      picked.textContent = choice.count;
+
+      const pct = document.createElement("td");
+      pct.className = "num";
+      pct.textContent = choice.percent + "%";
+
+      const top = document.createElement("td");
+      top.className = "num";
+      top.textContent = q.answered ? choice.topCount : "—";
+
+      const bottom = document.createElement("td");
+      bottom.className = "num";
+      bottom.textContent = q.answered ? choice.bottomCount : "—";
+
+      tr.append(answer, picked, pct, top, bottom);
+      body.append(tr);
+    }
+    table.append(body);
+    nodes.push(table);
+
+    return nodes;
+  }
+
+  for (const button of document.querySelectorAll("#order button")) {
+    button.addEventListener("click", () => {
+      order = button.dataset.order;
+      for (const b of document.querySelectorAll("#order button")) b.classList.toggle("on", b === button);
+      render();
+    });
+  }
+
+  load();
+})();
+</script>
+</body>
+</html>

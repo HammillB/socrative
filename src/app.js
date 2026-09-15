@@ -443,6 +443,17 @@ export function createApp({ getDriver, staticHandler }) {
     return c.json({ state });
   });
 
+  /**
+   * Difficulty and discrimination for one test administration, reached by
+   * the same dashboard token as the live board -- a report is not any more
+   * sensitive than the grid a teacher is already watching live.
+   */
+  app.get("/api/report/:token", async (c) => {
+    const report = await db.getItemAnalysis(c.get("sql"), c.req.param("token"));
+    if (!report) return fail(c, "No such report.", 404);
+    return c.json(report);
+  });
+
   // ------------------------------------------------- the teacher's console
   //
   // Reached by an unguessable per-teacher link, the same interim arrangement
@@ -497,6 +508,7 @@ export function createApp({ getDriver, staticHandler }) {
         created: row.created_at,
         delivery: JSON.parse(row.settings || "{}").delivery ?? "sequential",
         boardUrl: `/live.html#${row.dashboard_token}`,
+        reportUrl: `/report.html#${row.dashboard_token}`,
       })),
     });
   });

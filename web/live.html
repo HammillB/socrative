@@ -38,6 +38,11 @@
   button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
   button.danger { background: #fff; color: var(--wrong); border-color: #e3c4b3; }
   button.danger:hover { background: var(--wrong-bg); }
+  a.link-btn { font: inherit; font-weight: 600; cursor: pointer; padding: 8px 14px;
+               border-radius: 6px; border: 1px solid var(--line); background: var(--card);
+               color: var(--ink); text-decoration: none; display: inline-block; }
+  a.link-btn:hover { border-color: var(--accent); color: var(--accent); }
+  a.link-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
   .finished-badge { font-size: 12px; font-weight: 700; letter-spacing: .05em;
                      text-transform: uppercase; padding: 8px 14px; border-radius: 6px;
                      background: var(--right-bg); color: var(--right); }
@@ -114,6 +119,7 @@
   </div>
   <div class="controls">
     <span class="code" id="code"></span>
+    <a class="link-btn" id="report-link" href="#" target="_blank" rel="noopener">Item Analysis</a>
     <button id="toggle-names" class="on" type="button">Names</button>
     <button id="toggle-answers" class="on" type="button">Answers</button>
     <button id="toggle-correct" class="on" type="button">Right / wrong</button>
@@ -154,6 +160,7 @@
       'Use the full link printed when you opened the test.</p>';
     return;
   }
+  document.getElementById("report-link").href = `/report.html#${token}`;
 
   const show = { names: true, answers: true, correct: true };
   let scoreMode = "percent";   // "progress" | "percent" | "points" -- mutually exclusive

@@ -72,6 +72,46 @@ have not looked at does not quietly become part of a graded test. Questions
 with no correct answer marked are refused outright rather than imported
 ungradeable.
 
+## Item analysis
+
+Difficulty and discrimination, computed after each test -- the reason this
+project exists rather than staying on Socrative. Open the live board and
+click **Item Analysis**, or follow the Report link from a past test.
+
+```
+25 questions · 0 flagged for review · 3 papers completed
+
+ 3  Absolute zero happens when                    Difficulty 33%  Discrimination +1.00
+    A  all particles stop moving        Correct     1   33%   top 1   bottom 0
+    B  water freezes                                1   33%   top 0   bottom 0
+    C  we reach a vacuum                            1   33%   top 0   bottom 1
+    D  coldest temperature recorded ...             0    0%   top 0   bottom 0   -- nobody picked this
+    E  There is no absolute zero                    0    0%   top 0   bottom 0   -- nobody picked this
+```
+
+The method is the textbook one, unchanged since Kelley (1939): rank
+students who **completed** the test by total score, take the top and bottom
+~27% as the two groups likeliest to actually separate a good item from a
+bad one, and compare how each group did on every question.
+
+  * **Difficulty (p)** -- the fraction of students who got it right, over
+    everyone who finished. Below 30% or above 95% gets a note.
+  * **Discrimination (D)** -- how much better the top group did on this
+    question than the bottom group. Negative is the flag that matters most:
+    it means students who did well on the rest of the test did *worse* on
+    this one, which is usually a wrong answer key, not a bad question.
+  * **Distractors** -- how many students picked each wrong answer, broken
+    out by group. A distractor nobody picked isn't pulling its weight. A
+    distractor the *top* group preferred over the bottom group is the other
+    real warning sign -- it can mean the "wrong" answer has a defensible
+    reading, or that the key is wrong.
+
+Reached by the same dashboard link as the live board -- there's nothing in
+a report that isn't already in that grid, so it needs no separate secret.
+Scoped to one **administration**, not a quiz: the same quiz launched locked
+for a graded test and open for a review the next day gets two separate
+reports, because the students and their answers are different each time.
+
 ## Launching a test
 
 Import puts the questions in; **launch** decides how a particular run behaves.
@@ -112,7 +152,7 @@ Everything is also available from the command line:
 
 ```bash
 node scripts/launch.js --teacher you@school.org            # list your quizzes
-node scripts/launch.js --teacher you@school.org --quiz 1   --section INTSCIA3 --code REVIEW --mode open
+node scripts/launch.js --teacher you@school.org --quiz 1 --section INTSCIA3 --mode open
 ```
 
 Also takes `--no-shuffle`, `--no-shuffle-answers`, `--show-score` and
@@ -297,14 +337,16 @@ npm run dev      # in one terminal
 npm test         # in another
 ```
 
-82 checks covering both delivery modes, the launch console and the board, including the ones that
+91 checks covering both delivery modes, the launch console and the board, including the ones that
 would be expensive to get wrong: that a dead device resumes in the right
 place, that going back and skipping ahead are refused by the server in
 sequential mode, that an open test cannot be handed in with blanks, that
 feedback names the letter the student actually saw, that a shuffled paper
 still maps to the right canonical letter on the teacher's grid, that points
-and progress hold up against an independent recomputation, and that Finish
-Activity actually locks everyone out rather than just looking like it does.
+and progress hold up against an independent recomputation, that Finish
+Activity actually locks everyone out rather than just looking like it does,
+and that difficulty and discrimination match numbers worked out by hand for
+three students with fully controlled, opposite performance.
 
 The suite expects a test running in each of two rooms — a sequential one in
 `INTSCIA3` and an open one in `INTSCIA4`, since a room runs one at a time. It

@@ -676,6 +676,246 @@ export async function getLiveBoard(sql, dashboardToken) {
   };
 }
 
+// ---------------------------------------------------------------- reports
+
+/**
+ * Difficulty and discrimination for every question in ONE administration of
+ * a test.
+ *
+ * Scoped to a session, not a quiz: the same quiz launched twice -- locked
+ * for a graded test on Tuesday, open for review on Wednesday -- is two
+ * different administrations with two different rosters of answers, and gets
+ * two different reports. Reached by the same dashboard_token as the live
+ * board; there is nothing more sensitive in this report than in that grid.
+ *
+ * Only SUBMITTED attempts count. A submitted attempt is a complete paper in
+ * both delivery modes -- open navigation refuses to hand in with a blank,
+ * and sequential submits itself the instant the last question is answered
+ * -- so every attempt counted here answered every question. That is what
+ * classic item statistics assume, and it is why a test still being taken
+ * simply has a smaller, still-valid n rather than partial, misleading data.
+ *
+ * The method is the standard one, unchanged since Kelley (1939): rank
+ * students by total score, split off the top and bottom ~27% as the groups
+ * most likely to actually separate a good item from a bad one, and compare
+ * how each group did on every single question.
+ *
+ *   difficulty (p)      = correct / answered, over EVERYONE who finished
+ *   discrimination (D)  = (top group's p on this item) - (bottom group's p)
+ *
+ * A distractor's raw pick-count is directly comparable between the two
+ * groups without converting to a rate first, because construction gives the
+ * top and bottom group the same size.
+ */
+export async function getItemAnalysis(sql, dashboardToken) {
+  const LETTERS = "ABCDEFGH";
+
+  const session = await sql.get(
+    `SELECT s.id, s.teacher_id, s.assessment_id, s.state, a.title, sec.name AS room
+       FROM sessions s
+       JOIN assessments a ON a.id = s.assessment_id
+       LEFT JOIN sections sec ON sec.id = s.section_id
+      WHERE s.dashboard_token = ?`,
+    [dashboardToken]
+  );
+  if (!session) return null;
+
+  const questions = await sql.all(
+    `SELECT ai.position, q.id, q.stem, q.media,
+            COALESCE(ai.points, q.points) AS points
+       FROM assessment_items ai
+       JOIN questions q ON q.id = ai.question_id
+      WHERE ai.assessment_id = ?
+      ORDER BY ai.position`,
+    [session.assessment_id]
+  );
+  for (const question of questions) {
+    const choices = await sql.all(
+      `SELECT id, position, text, media, is_correct
+         FROM choices WHERE question_id = ? ORDER BY position`,
+      [question.id]
+    );
+    question.choiceMeta = choices.map((c) => ({
+      id: c.id,
+      letter: LETTERS[c.position] ?? "?",
+      text: c.text,
+      media: c.media,
+      isCorrect: !!c.is_correct,
+    }));
+  }
+
+  const attempts = await sql.all(
+    `SELECT id FROM attempts WHERE session_id = ? AND status = 'submitted'`,
+    [session.id]
+  );
+
+  const base = {
+    session: {
+      id: session.id,
+      title: session.title,
+      room: session.room,
+      state: session.state,
+    },
+    students: attempts.length,
+    groupSize: 0,
+  };
+
+  if (!attempts.length) {
+    return {
+      ...base,
+      questions: questions.map((q) => ({
+        position: q.position, id: q.id, stem: q.stem, media: q.media,
+        answered: 0, difficulty: null, discrimination: null,
+        choices: q.choiceMeta.map((c) => ({ ...c, count: 0, percent: 0, topCount: 0, bottomCount: 0 })),
+        flags: [],
+        verdict: { level: "info", text: "Nobody has finished this test yet." },
+      })),
+    };
+  }
+
+  const responses = await sql.all(
+    `SELECT attempt_id, question_id, choice_id, is_correct, points_earned
+       FROM responses
+      WHERE attempt_id IN (${attempts.map(() => "?").join(",")})`,
+    attempts.map((a) => a.id)
+  );
+
+  // Rank attempts by total score to find the top and bottom ~27%. With this
+  // few data points per class, rounding matters: floor(n/2) keeps the two
+  // groups from overlapping when n is small, and a lone student (n=1) gets
+  // no group at all -- there is nothing to compare them against.
+  const totalByAttempt = new Map(attempts.map((a) => [a.id, 0]));
+  for (const r of responses) {
+    totalByAttempt.set(r.attempt_id, (totalByAttempt.get(r.attempt_id) ?? 0) + (r.points_earned ?? 0));
+  }
+  const ranked = [...totalByAttempt.entries()].sort((a, b) => b[1] - a[1]);
+  const n = ranked.length;
+  const groupSize = n >= 2 ? Math.max(1, Math.min(Math.floor(n / 2), Math.round(n * 0.27))) : 0;
+  const topIds = new Set(ranked.slice(0, groupSize).map(([id]) => id));
+  const bottomIds = new Set(ranked.slice(n - groupSize, n).map(([id]) => id));
+
+  const responsesByQuestion = new Map(questions.map((q) => [q.id, []]));
+  for (const r of responses) responsesByQuestion.get(r.question_id)?.push(r);
+
+  const reportedQuestions = questions.map((question) => {
+    const rs = responsesByQuestion.get(question.id) ?? [];
+    const answered = rs.length;
+    const correct = rs.filter((r) => r.is_correct).length;
+    const difficulty = answered ? Math.round((correct / answered) * 100) / 100 : null;
+
+    let discrimination = null;
+    if (groupSize >= 1) {
+      const topRs = rs.filter((r) => topIds.has(r.attempt_id));
+      const bottomRs = rs.filter((r) => bottomIds.has(r.attempt_id));
+      if (topRs.length && bottomRs.length) {
+        const topP = topRs.filter((r) => r.is_correct).length / topRs.length;
+        const bottomP = bottomRs.filter((r) => r.is_correct).length / bottomRs.length;
+        discrimination = Math.round((topP - bottomP) * 100) / 100;
+      }
+    }
+
+    const counts = new Map(question.choiceMeta.map((c) => [c.id, { count: 0, topCount: 0, bottomCount: 0 }]));
+    for (const r of rs) {
+      const entry = counts.get(r.choice_id);
+      if (!entry) continue;
+      entry.count++;
+      if (topIds.has(r.attempt_id)) entry.topCount++;
+      if (bottomIds.has(r.attempt_id)) entry.bottomCount++;
+    }
+    const choices = question.choiceMeta.map((c) => {
+      const stat = counts.get(c.id) ?? { count: 0, topCount: 0, bottomCount: 0 };
+      return {
+        letter: c.letter, text: c.text, media: c.media, isCorrect: c.isCorrect,
+        count: stat.count,
+        percent: answered ? Math.round((stat.count / answered) * 1000) / 10 : 0,
+        topCount: stat.topCount, bottomCount: stat.bottomCount,
+      };
+    });
+
+    const flags = flagsFor({ difficulty, discrimination, groupSize, choices });
+    const verdict = worstFlag(flags);
+
+    return {
+      position: question.position, id: question.id, stem: question.stem, media: question.media,
+      answered, difficulty, discrimination, choices, flags, verdict,
+    };
+  });
+
+  return { ...base, groupSize, questions: reportedQuestions };
+}
+
+const SEVERITY = { critical: 3, warning: 2, good: 1, info: 0 };
+
+function worstFlag(flags) {
+  if (!flags.length) return { level: "info", text: "Nothing unusual." };
+  return flags.reduce((worst, f) => (SEVERITY[f.level] > SEVERITY[worst.level] ? f : worst));
+}
+
+/**
+ * Turn the numbers into sentences a teacher can act on without knowing what
+ * "discrimination" means. Thresholds are the conventional ones: p below .30
+ * or above .95 is worth a look, D below .20 is weak and below 0 usually
+ * means the key itself is wrong, .40 and up is a genuinely strong item.
+ */
+function flagsFor({ difficulty, discrimination, groupSize, choices }) {
+  const flags = [];
+
+  if (discrimination !== null) {
+    if (discrimination < 0) {
+      flags.push({ level: "critical", text:
+        `Students who scored highest on the rest of the test did WORSE on this ` +
+        `question than students who scored lowest. That almost always means the ` +
+        `answer key is wrong -- check which choice is marked correct.` });
+    } else if (discrimination < 0.20) {
+      flags.push({ level: "warning", text:
+        `Weak discriminator (D = ${discrimination.toFixed(2)}): strong and weak ` +
+        `students did about equally well. The question may be ambiguous, testing ` +
+        `something else, or just a coin flip.` });
+    } else if (discrimination >= 0.40) {
+      flags.push({ level: "good", text:
+        `Strong discriminator (D = ${discrimination.toFixed(2)}): this question ` +
+        `separates students who know the material from those who don't -- a good ` +
+        `item to keep.` });
+    }
+  } else if (groupSize < 1) {
+    flags.push({ level: "info", text:
+      `Too few finished papers to compare a top and bottom group.` });
+  }
+
+  if (difficulty !== null) {
+    if (difficulty === 0) {
+      flags.push({ level: "critical", text: `Nobody got this right.` });
+    } else if (difficulty < 0.30) {
+      flags.push({ level: "warning", text:
+        `Very difficult: only ${Math.round(difficulty * 100)}% got this right.` });
+    } else if (difficulty > 0.95) {
+      flags.push({ level: "info", text:
+        `Almost everyone got this right (${Math.round(difficulty * 100)}%) -- a free ` +
+        `point, or worth confirming it is testing anything.` });
+    }
+  }
+
+  // Each flagged choice is marked directly on the object returned to the
+  // client (`choice.flagged`), rather than leaving the page to work out
+  // which letter a flag's English sentence was about.
+  for (const choice of choices) {
+    if (choice.isCorrect) continue;
+    if (choice.count === 0) {
+      flags.push({ level: "info", text:
+        `Nobody chose "${choice.letter}". It isn't pulling its weight as a wrong answer.` });
+      choice.flagged = true;
+    } else if (choice.topCount > choice.bottomCount) {
+      flags.push({ level: "warning", text:
+        `Higher-scoring students picked "${choice.letter}" more often than ` +
+        `lower-scoring students did. Worth checking whether that answer has a ` +
+        `defensible reading, or whether the key is right.` });
+      choice.flagged = true;
+    }
+  }
+
+  return flags;
+}
+
 export async function setSessionState(sql, dashboardToken, state) {
   const { changes } = await sql.run(
     `UPDATE sessions SET state = ? WHERE dashboard_token = ?`,

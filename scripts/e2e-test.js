@@ -510,6 +510,78 @@ if (!dashboardToken) {
   check("the room name does NOT open the board",
     (await fetch(`${BASE}/api/live/${ROOM}`)).status === 404);
 
+  // --- 7c. item analysis ------------------------------------------------------
+  //
+  // Two more students finish ROOM's test with fully controlled, opposite
+  // performance -- one gets everything right, one gets everything wrong --
+  // so difficulty and discrimination can be checked against numbers worked
+  // out by hand rather than only checked for "some number came back".
+  //
+  // Combined with 100001 (already finished earlier: wrong on firstQuestionId,
+  // correct on every question after it), ROOM now has exactly 3 completed
+  // papers with a known shape:
+  //
+  //   firstQuestionId   100001 wrong, ace right, zero wrong  -> p = 1/3
+  //   every other question   100001 right, ace right, zero wrong  -> p = 2/3
+  //   discrimination     ace (top) right, zero (bottom) wrong, always -> D = 1.00
+
+  async function finishSequential(studentNumber, alwaysCorrect) {
+    let s = (await post("/api/join", { room: ROOM, studentNumber })).body;
+    while (!s.finished) {
+      const correctId = keyOf.get(s.question.id);
+      const choiceId = alwaysCorrect
+        ? correctId
+        : s.question.choices.find((ch) => ch.id !== correctId).id;
+      s = (await post("/api/answer", {
+        token: s.token, questionId: s.question.id, choiceId,
+      })).body;
+    }
+  }
+
+  await finishSequential("100002", true);   // "ace"  -- every answer correct
+  await finishSequential("100003", false);  // "zero" -- every answer wrong
+
+  const report = await (await fetch(`${BASE}/api/report/${dashboardToken}`)).json();
+
+  check("the report counts exactly the completed papers", report.students === 3,
+    `students=${report.students}`);
+  check("top/bottom group size is 1 (27% of 3, rounded)", report.groupSize === 1,
+    `groupSize=${report.groupSize}`);
+
+  const trickyQ = report.questions.find((q) => q.id === firstQuestionId);
+  check("difficulty on the question 100001 got wrong is 1/3",
+    trickyQ && Math.abs(trickyQ.difficulty - 1 / 3) < 0.01,
+    `difficulty=${trickyQ?.difficulty}`);
+  check("discrimination is +1.00 -- the top student got it right, the bottom did not",
+    trickyQ && trickyQ.discrimination === 1,
+    `discrimination=${trickyQ?.discrimination}`);
+
+  const easyQ = report.questions.find((q) => q.id !== firstQuestionId);
+  check("difficulty on a question 100001 got right is 2/3",
+    easyQ && Math.abs(easyQ.difficulty - 2 / 3) < 0.01,
+    `difficulty=${easyQ?.difficulty}`);
+  check("discrimination is still +1.00 on that question too",
+    easyQ && easyQ.discrimination === 1);
+
+  // Structural sanity that would catch an indexing bug even where the exact
+  // numbers above happen to still come out right: every submitted student
+  // picked exactly one choice on every question, so the counts must sum to n.
+  const sumMismatch = report.questions.filter(
+    (q) => q.choices.reduce((sum, c) => sum + c.count, 0) !== report.students
+  ).length;
+  check("every question's choice counts sum to the number of completed papers",
+    sumMismatch === 0, `${sumMismatch} question(s) did not sum to ${report.students}`);
+
+  // D = 1.00 on every question should register as a "good" flag somewhere,
+  // regardless of which single flag a question's verdict happens to surface.
+  const anyGoodFlag = report.questions.some((q) => q.flags.some((f) => f.level === "good"));
+  check("a strong discriminator is flagged as a good item", anyGoodFlag);
+
+  // A join code is not a thing any more, but the report token still must not
+  // double as anything a student could reach with just the room name.
+  check("the room name does NOT open the report",
+    (await fetch(`${BASE}/api/report/${ROOM}`)).status === 404);
+
   // --- 7b. Finish Activity -- the live board's one irreversible action -----
   //
   // Run last on purpose: it closes ROOM's session, so nothing after this can
