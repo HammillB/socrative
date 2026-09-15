@@ -22,7 +22,7 @@
     background: var(--card); border-bottom: 1px solid var(--line);
     padding: 14px 20px; display: flex; flex-wrap: wrap; gap: 14px;
     align-items: center; justify-content: space-between;
-    position: sticky; top: 0; z-index: 5;
+    position: sticky; top: 52px; z-index: 5;
   }
   h1 { font-size: 19px; margin: 0; }
   .code { font: 600 14px/1 ui-monospace, Consolas, monospace; letter-spacing: .12em;
@@ -155,6 +155,7 @@
   <p class="empty" id="empty" hidden>Waiting for students to join.</p>
 </div>
 
+<script src="nav.js"></script>
 <script>
 (() => {
   "use strict";
@@ -178,11 +179,17 @@
   // hiccup by simply succeeding next time. WebSockets would be faster and
   // would need reconnection logic that has to be right on a school network.
 
+  let navReady = false;
+
   async function refresh() {
     try {
       const res = await fetch(`/api/live/${encodeURIComponent(token)}`);
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "unavailable");
       board = await res.json();
+      if (!navReady && board.session.consoleToken) {
+        navReady = true;
+        initTopNav({ token: board.session.consoleToken, active: null });
+      }
       render();
       $("stamp").textContent = "updated " + new Date().toLocaleTimeString();
     } catch (err) {

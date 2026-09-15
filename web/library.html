@@ -21,11 +21,6 @@
   header { display: flex; justify-content: space-between; align-items: center;
            gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
   h1 { font-size: 22px; margin: 0; }
-  a.nav { color: var(--accent); font-weight: 600; text-decoration: none; font-size: 14px;
-          margin-right: 12px; }
-  a.nav:hover { text-decoration: underline; }
-  .who { color: var(--muted); font-size: 15px; }
-
   .panel { background: var(--card); border: 1px solid var(--line);
            border-radius: 10px; padding: 22px 24px; margin-bottom: 18px; }
   .panel h2 { font-size: 17px; margin: 0 0 4px; }
@@ -119,11 +114,6 @@
 
   <header>
     <h1>Library</h1>
-    <span>
-      <a class="nav" id="launch-link" href="#">Launch</a>
-      <a class="nav" id="rooms-link" href="#">Rooms</a>
-      <span class="who" id="who"></span>
-    </span>
   </header>
 
   <!-- 1. quiz list ---------------------------------------------------- -->
@@ -181,6 +171,7 @@
   <p class="error" id="fatal" hidden></p>
 </div>
 
+<script src="nav.js"></script>
 <script>
 (() => {
   "use strict";
@@ -194,8 +185,7 @@
     $("fatal").hidden = false;
     return;
   }
-  $("launch-link").href = `/launch.html#${token}`;
-  $("rooms-link").href = `/rooms.html#${token}`;
+  initTopNav({ token, active: "library" });
 
   let data = null;             // /api/teacher/:token payload
   let currentQuiz = null;      // the open quiz's full detail, while editing
@@ -684,7 +674,7 @@
 
   async function load() {
     data = await api(`/api/teacher/${encodeURIComponent(token)}`);
-    $("who").textContent = " " + data.teacher.name;
+    setTopNavWho(data.teacher.name);
     if (!currentQuiz) renderList();
   }
 

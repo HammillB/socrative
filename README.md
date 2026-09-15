@@ -23,9 +23,10 @@ behaves the way the session says. So one quiz can run locked for a graded test
 on Tuesday and open for a review on Wednesday, without importing the questions
 twice.
 
-**Status: Phase 2, in progress.** The student side works end to end and the
-teacher's live results board is running. Tests are still set up from the
-command line; authoring and sign-in are next.
+**Status: Phase 2, in progress.** The student side works end to end, and the
+teacher's console -- Launch, Library, and Rooms, sharing one persistent nav
+bar -- covers day-to-day use short of signing in. Google sign-in for
+teachers is next.
 
 ---
 
@@ -369,9 +370,11 @@ scripts/e2e-test.js the test suite
 scripts/demo-class.js  drive a fake class through a test
 web/test.html       the student test page
 web/live.html       the teacher's live results board
+web/report.html     item analysis for one test administration
 web/launch.html     the teacher's launch screen
 web/rooms.html      manage rooms and rosters
 web/library.html    build and import quizzes
+web/nav.js          the top nav bar shared by every teacher-facing page
 ```
 
 ### Things worth knowing

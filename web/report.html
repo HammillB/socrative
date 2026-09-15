@@ -144,6 +144,7 @@
   <p class="empty" id="empty" hidden></p>
 </div>
 
+<script src="nav.js"></script>
 <script>
 (() => {
   "use strict";
@@ -213,6 +214,8 @@
     }
   }
 
+  let navReady = false;
+
   async function load() {
     const res = await fetch(`/api/report/${encodeURIComponent(token)}`);
     if (!res.ok) {
@@ -223,6 +226,10 @@
       return;
     }
     report = await res.json();
+    if (!navReady && report.session.consoleToken) {
+      navReady = true;
+      initTopNav({ token: report.session.consoleToken, active: null });
+    }
     render();
   }
 

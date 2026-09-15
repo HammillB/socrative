@@ -964,9 +964,10 @@ export async function getLiveBoard(sql, dashboardToken) {
 
   const session = await sql.get(
     `SELECT s.id, s.teacher_id, s.assessment_id, s.section_id,
-            s.state, s.settings, a.title, sec.name AS room
+            s.state, s.settings, a.title, sec.name AS room, t.console_token
        FROM sessions s
        JOIN assessments a ON a.id = s.assessment_id
+       JOIN teachers t ON t.id = s.teacher_id
        LEFT JOIN sections sec ON sec.id = s.section_id
       WHERE s.dashboard_token = ?`,
     [dashboardToken]
@@ -1127,6 +1128,7 @@ export async function getLiveBoard(sql, dashboardToken) {
       room: session.room,
       state: session.state,
       delivery: JSON.parse(session.settings || "{}").delivery ?? "sequential",
+      consoleToken: session.console_token,
     },
     questions,
     students,
@@ -1177,9 +1179,11 @@ export async function getItemAnalysis(sql, dashboardToken) {
   const LETTERS = "ABCDEFGH";
 
   const session = await sql.get(
-    `SELECT s.id, s.teacher_id, s.assessment_id, s.state, a.title, sec.name AS room
+    `SELECT s.id, s.teacher_id, s.assessment_id, s.state, a.title, sec.name AS room,
+            t.console_token
        FROM sessions s
        JOIN assessments a ON a.id = s.assessment_id
+       JOIN teachers t ON t.id = s.teacher_id
        LEFT JOIN sections sec ON sec.id = s.section_id
       WHERE s.dashboard_token = ?`,
     [dashboardToken]
@@ -1221,6 +1225,7 @@ export async function getItemAnalysis(sql, dashboardToken) {
       title: session.title,
       room: session.room,
       state: session.state,
+      consoleToken: session.console_token,
     },
     students: attempts.length,
     groupSize: 0,
