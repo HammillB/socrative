@@ -11,6 +11,8 @@
  * reads content without scoping it to an owner.
  */
 
+import { pickColumn } from "./csv.js";
+
 // ------------------------------------------------------------------ drivers
 
 /**
@@ -153,6 +155,118 @@ export async function findStudentByNumber(sql, teacherId, studentNumber) {
     `SELECT * FROM students WHERE teacher_id = ? AND student_number = ?`,
     [teacherId, String(studentNumber).trim()]
   );
+}
+
+// ------------------------------------------------------------------ rooms
+
+/** One room's roster. A student can be enrolled in more than one room. */
+export async function listRosterForSection(sql, teacherId, sectionId) {
+  return sql.all(
+    `SELECT st.id, st.student_number, st.first_name, st.last_name
+       FROM enrollments e
+       JOIN students st ON st.id = e.student_id
+      WHERE e.section_id = ? AND st.teacher_id = ?
+      ORDER BY st.last_name, st.first_name, st.student_number`,
+    [sectionId, teacherId]
+  );
+}
+
+/**
+ * Edit a student's own record -- their number and name, not any one room's
+ * view of them. The same edit is visible in every room they are enrolled in,
+ * because it is the same underlying student.
+ */
+export async function updateStudent(sql, teacherId, studentId, { studentNumber, firstName, lastName }) {
+  const trimmed = String(studentNumber ?? "").trim();
+  if (!trimmed) throw new Error("A student needs a student number.");
+  const { changes } = await sql.run(
+    `UPDATE students SET student_number = ?, first_name = ?, last_name = ?
+      WHERE id = ? AND teacher_id = ?`,
+    [trimmed, firstName || null, lastName || null, studentId, teacherId]
+  );
+  return changes > 0;
+}
+
+/**
+ * Remove one student from one room's roster. Does not delete the student
+ * record itself -- they may still be enrolled elsewhere, and past attempts
+ * naming them stay exactly as they were.
+ */
+export async function unenrollStudent(sql, teacherId, sectionId, studentId) {
+  const owned = await sql.get(
+    `SELECT 1 AS ok FROM sections WHERE id = ? AND teacher_id = ?`,
+    [sectionId, teacherId]
+  );
+  if (!owned) return false;
+  const { changes } = await sql.run(
+    `DELETE FROM enrollments WHERE section_id = ? AND student_id = ?`,
+    [sectionId, studentId]
+  );
+  return changes > 0;
+}
+
+/** Create a new, empty room. Room names are unique across the whole install. */
+export async function createRoom(sql, teacherId, name) {
+  const trimmed = String(name ?? "").trim();
+  if (!trimmed) throw new Error("Give the room a name.");
+  const { lastInsertId } = await sql.run(
+    `INSERT INTO sections (teacher_id, name) VALUES (?, ?)`,
+    [teacherId, trimmed]
+  );
+  return lastInsertId;
+}
+
+export async function renameRoom(sql, teacherId, sectionId, name) {
+  const trimmed = String(name ?? "").trim();
+  if (!trimmed) throw new Error("Give the room a name.");
+  const { changes } = await sql.run(
+    `UPDATE sections SET name = ? WHERE id = ? AND teacher_id = ?`,
+    [trimmed, sectionId, teacherId]
+  );
+  return changes > 0;
+}
+
+/**
+ * Delete a room outright. Enrollments cascade with it (schema: ON DELETE
+ * CASCADE); any session ever launched into it keeps its own history --
+ * sections.id on a session is ON DELETE SET NULL, so a past test's record
+ * survives the room it was given in being deleted, just with no room name
+ * to show for it any more.
+ */
+export async function deleteRoom(sql, teacherId, sectionId) {
+  const { changes } = await sql.run(
+    `DELETE FROM sections WHERE id = ? AND teacher_id = ?`,
+    [sectionId, teacherId]
+  );
+  return changes > 0;
+}
+
+/**
+ * Bulk-load a roster into a room from already-parsed CSV rows, in
+ * Socrative's own column shape (First Name, Last Name, Student ID). A
+ * number already on the teacher's books is matched and updated rather than
+ * duplicated -- the same rule scripts/import.js has always used.
+ */
+export async function importRosterRows(sql, teacherId, sectionId, rows) {
+  const owned = await sql.get(
+    `SELECT 1 AS ok FROM sections WHERE id = ? AND teacher_id = ?`,
+    [sectionId, teacherId]
+  );
+  if (!owned) throw new Error("That room was not found.");
+
+  let count = 0;
+  for (const row of rows) {
+    const studentNumber = pickColumn(row, "Student ID", "StudentID", "ID", "student_number");
+    if (!studentNumber) continue;
+    const studentId = await upsertStudent(sql, teacherId, {
+      studentNumber,
+      firstName: pickColumn(row, "First Name", "FirstName", "First"),
+      lastName: pickColumn(row, "Last Name", "LastName", "Last"),
+    });
+    await enroll(sql, studentId, sectionId);
+    count++;
+  }
+  return count;
 }
 
 // --------------------------------------------------------------- questions

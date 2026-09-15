@@ -10,6 +10,7 @@
 import { Hono } from "hono";
 import * as db from "./db.js";
 import { launchSettings, MODES, MODE_LABELS, MODE_DESCRIPTIONS } from "./delivery.js";
+import { parseCsv } from "./csv.js";
 
 // ------------------------------------------------------- deterministic order
 
@@ -623,6 +624,141 @@ export function createApp({ getDriver, staticHandler }) {
     const closed = await db.closeSession(c.get("sql"), teacher.id, Number(sessionId));
     if (!closed) return fail(c, "That test was not found.", 404);
     return c.json({ closed: true });
+  });
+
+  // --------------------------------------------------------- rooms & rosters
+  //
+  // The room LIST itself already comes back from GET /api/teacher/:token
+  // (the launch screen needs the same data -- name, student count, whether
+  // a test is open in it right now). These add the write side: create,
+  // rename, delete a room, and manage who is on its roster.
+
+  app.post("/api/teacher/:token/rooms", async (c) => {
+    const { teacher, error } = await requireTeacher(c);
+    if (error) return error;
+    const { name } = await c.req.json().catch(() => ({}));
+    try {
+      const id = await db.createRoom(c.get("sql"), teacher.id, name);
+      return c.json({ created: true, id });
+    } catch (err) {
+      return fail(c, /UNIQUE/i.test(err.message)
+        ? `A room named "${String(name).trim()}" already exists.`
+        : err.message);
+    }
+  });
+
+  app.post("/api/teacher/:token/rooms/:sectionId/rename", async (c) => {
+    const { teacher, error } = await requireTeacher(c);
+    if (error) return error;
+    const { name } = await c.req.json().catch(() => ({}));
+    try {
+      const ok = await db.renameRoom(c.get("sql"), teacher.id, Number(c.req.param("sectionId")), name);
+      if (!ok) return fail(c, "That room was not found.", 404);
+      return c.json({ renamed: true });
+    } catch (err) {
+      return fail(c, /UNIQUE/i.test(err.message)
+        ? `A room named "${String(name).trim()}" already exists.`
+        : err.message);
+    }
+  });
+
+  app.post("/api/teacher/:token/rooms/:sectionId/delete", async (c) => {
+    const { teacher, error } = await requireTeacher(c);
+    if (error) return error;
+    const sql = c.get("sql");
+    const sectionId = Number(c.req.param("sectionId"));
+
+    // Deleting a room out from under a live test would silently cut its
+    // roster loose mid-administration -- the same reason launching into a
+    // busy room is refused. Close it first.
+    const open = await db.findOpenSessionForSection(sql, teacher.id, sectionId);
+    if (open) {
+      return fail(c, `"${open.title}" is still open in this room. Close it before deleting the room.`, 409);
+    }
+
+    const ok = await db.deleteRoom(sql, teacher.id, sectionId);
+    if (!ok) return fail(c, "That room was not found.", 404);
+    return c.json({ deleted: true });
+  });
+
+  app.get("/api/teacher/:token/rooms/:sectionId/roster", async (c) => {
+    const { teacher, error } = await requireTeacher(c);
+    if (error) return error;
+    const roster = await db.listRosterForSection(
+      c.get("sql"), teacher.id, Number(c.req.param("sectionId"))
+    );
+    return c.json({
+      students: roster.map((s) => ({
+        id: s.id, studentNumber: s.student_number,
+        firstName: s.first_name, lastName: s.last_name,
+      })),
+    });
+  });
+
+  /** Add one student to a room by hand -- the small counterpart to importing a whole file. */
+  app.post("/api/teacher/:token/rooms/:sectionId/students", async (c) => {
+    const { teacher, error } = await requireTeacher(c);
+    if (error) return error;
+    const sql = c.get("sql");
+    const sectionId = Number(c.req.param("sectionId"));
+
+    const { studentNumber, firstName, lastName } = await c.req.json().catch(() => ({}));
+    if (!String(studentNumber || "").trim()) return fail(c, "A student number is required.");
+
+    const studentId = await db.upsertStudent(sql, teacher.id, { studentNumber, firstName, lastName });
+    await db.enroll(sql, studentId, sectionId);
+    return c.json({ added: true, id: studentId });
+  });
+
+  app.post("/api/teacher/:token/students/:studentId", async (c) => {
+    const { teacher, error } = await requireTeacher(c);
+    if (error) return error;
+    const { studentNumber, firstName, lastName } = await c.req.json().catch(() => ({}));
+    try {
+      const ok = await db.updateStudent(c.get("sql"), teacher.id, Number(c.req.param("studentId")), {
+        studentNumber, firstName, lastName,
+      });
+      if (!ok) return fail(c, "That student was not found.", 404);
+      return c.json({ updated: true });
+    } catch (err) {
+      return fail(c, /UNIQUE/i.test(err.message)
+        ? "Another student already has that student number."
+        : err.message);
+    }
+  });
+
+  app.post("/api/teacher/:token/rooms/:sectionId/students/:studentId/remove", async (c) => {
+    const { teacher, error } = await requireTeacher(c);
+    if (error) return error;
+    const ok = await db.unenrollStudent(
+      c.get("sql"), teacher.id,
+      Number(c.req.param("sectionId")), Number(c.req.param("studentId"))
+    );
+    if (!ok) return fail(c, "That student is not on this room's roster.", 404);
+    return c.json({ removed: true });
+  });
+
+  /** Bulk import: the browser reads the .csv file and sends its raw text. */
+  app.post("/api/teacher/:token/rooms/:sectionId/import", async (c) => {
+    const { teacher, error } = await requireTeacher(c);
+    if (error) return error;
+    const { csv } = await c.req.json().catch(() => ({}));
+    if (!csv || !csv.trim()) return fail(c, "That file looked empty.");
+
+    let rows;
+    try {
+      rows = parseCsv(csv);
+    } catch {
+      return fail(c, "Could not read that as a CSV file.");
+    }
+    try {
+      const imported = await db.importRosterRows(
+        c.get("sql"), teacher.id, Number(c.req.param("sectionId")), rows
+      );
+      return c.json({ imported });
+    } catch (err) {
+      return fail(c, err.message);
+    }
   });
 
   app.get("/api/health", (c) => c.json({ ok: true }));

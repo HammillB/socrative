@@ -21,6 +21,9 @@
            gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
   h1 { font-size: 22px; margin: 0; }
   .who { color: var(--muted); font-size: 15px; }
+  a.nav-link { color: var(--accent); font-weight: 600; text-decoration: none;
+               font-size: 14px; margin-right: 12px; }
+  a.nav-link:hover { text-decoration: underline; }
   header select { font: inherit; font-weight: 600; padding: 9px 12px;
                   border: 1px solid var(--line); border-radius: 7px; background: #fff;
                   color: var(--ink); }
@@ -143,6 +146,7 @@
   <header>
     <h1 id="heading">Launch a Test</h1>
     <span>
+      <a class="nav-link" id="rooms-link" href="#">Rooms</a>
       <select id="room" aria-label="Room"></select>
       <span class="who" id="who"></span>
     </span>
@@ -243,6 +247,7 @@
     $("fatal").hidden = false;
     return;
   }
+  $("rooms-link").href = `/rooms.html#${token}`;
 
   const chosen = {
     quizId: null, quizTitle: "", mode: "sequential",

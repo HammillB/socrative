@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rooms</title>
+<style>
+  :root {
+    --ground: #f1f4f3; --card: #fff; --ink: #18211f; --muted: #66756f;
+    --line: #d5ded9; --line-soft: #e8eeeb; --accent: #0c6a5e; --accent-soft: #e3f0ec;
+    --bad: #a8491a; --bad-bg: #f7e2d7; --warn-bg: #fbf0d8; --warn: #8a6508;
+    --good: #10715f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 26px 20px 80px; }
+
+  header { display: flex; justify-content: space-between; align-items: center;
+           gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+  h1 { font-size: 22px; margin: 0; }
+  a.nav { color: var(--accent); font-weight: 600; text-decoration: none; font-size: 14px; }
+  a.nav:hover { text-decoration: underline; }
+  .who { color: var(--muted); font-size: 15px; }
+
+  .panel { background: var(--card); border: 1px solid var(--line);
+           border-radius: 10px; padding: 22px 24px; margin-bottom: 18px; }
+  .panel h2 { font-size: 17px; margin: 0 0 4px; }
+  .panel .lede { color: var(--muted); font-size: 14.5px; margin: 0 0 16px; }
+  .panel-head { display: flex; justify-content: space-between; align-items: flex-start;
+                gap: 14px; margin-bottom: 4px; }
+
+  button { font: inherit; font-weight: 600; cursor: pointer; border-radius: 7px;
+           padding: 9px 16px; border: 1px solid var(--line); background: #fff; color: var(--ink); }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { opacity: .92; }
+  button.danger { color: var(--bad); border-color: #e3c4b3; }
+  button.danger:hover { background: var(--bad-bg); }
+  button.small { padding: 5px 11px; font-size: 13px; }
+  button:disabled { opacity: .5; cursor: default; }
+  input[type=text] { font: inherit; padding: 8px 11px; border: 1px solid var(--line);
+                      border-radius: 6px; background: #fff; color: var(--ink); }
+  input:focus-visible, button:focus-visible, select:focus-visible {
+    outline: 3px solid var(--accent); outline-offset: 2px;
+  }
+
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line-soft);
+           vertical-align: middle; }
+  th { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  tbody tr:hover { background: var(--ground); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.actions { text-align: right; white-space: nowrap; }
+  td.actions button { margin-left: 6px; }
+
+  .room-name-btn { background: none; border: 0; padding: 0; font: inherit; font-weight: 700;
+                    color: var(--ink); cursor: pointer; text-align: left; }
+  .room-name-btn:hover { color: var(--accent); text-decoration: underline; }
+  .room-name-btn.selected { color: var(--accent); }
+
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+         background: var(--line); margin-right: 4px; }
+  .dot.live { background: var(--good); }
+
+  .rename-row input { width: 100%; }
+
+  .add-room { display: flex; gap: 10px; margin-top: 14px; }
+  .add-room input { flex: 1; }
+
+  .empty { color: var(--muted); padding: 14px 0; text-align: center; }
+
+  /* roster panel */
+  #roster-panel h2 { display: flex; align-items: baseline; gap: 10px; }
+  #roster-panel h2 .count { font-weight: 400; color: var(--muted); font-size: 14px; }
+  .roster-tools { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+
+  .add-student { display: grid; grid-template-columns: 1fr 1fr 1fr auto;
+                 gap: 10px; margin-bottom: 16px; align-items: end; }
+  .add-student label { display: block; font-size: 12px; font-weight: 600;
+                        color: var(--muted); margin-bottom: 4px; }
+  .add-student input { width: 100%; }
+  @media (max-width: 640px) { .add-student { grid-template-columns: 1fr 1fr; } }
+
+  .error { color: var(--bad); font-weight: 600; margin-top: 12px; font-size: 14px; }
+  .ok-msg { color: var(--good); font-weight: 600; margin-top: 12px; font-size: 14px; }
+
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Rooms</h1>
+    <span>
+      <a class="nav" id="launch-link" href="#">Launch a test &rarr;</a>
+      <span class="who" id="who"></span>
+    </span>
+  </header>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <h2>Your rooms</h2>
+        <p class="lede">Click a room to manage its roster.</p>
+      </div>
+    </div>
+    <div id="rooms-table"></div>
+
+    <form class="add-room" id="add-room-form">
+      <input type="text" id="new-room-name" placeholder="New room name, e.g. INTSCIA5"
+             autocomplete="off" spellcheck="false">
+      <button class="primary" type="submit">Add room</button>
+    </form>
+    <p class="error" id="rooms-error" hidden></p>
+  </section>
+
+  <section class="panel" id="roster-panel" hidden>
+    <h2><span id="roster-room-name"></span><span class="count" id="roster-count"></span></h2>
+    <p class="lede">Names are optional but make the live board and reports easier to read.
+      Only the student number is required -- it is what students type to sign in.</p>
+
+    <div class="roster-tools">
+      <button class="small" id="import-btn" type="button">Import a roster (.csv)</button>
+      <input type="file" id="import-file" accept=".csv,text/csv" hidden>
+    </div>
+
+    <form class="add-student" id="add-student-form">
+      <div>
+        <label for="new-number">Student number</label>
+        <input type="text" id="new-number" autocomplete="off" spellcheck="false" required>
+      </div>
+      <div>
+        <label for="new-first">First name</label>
+        <input type="text" id="new-first" autocomplete="off" spellcheck="false">
+      </div>
+      <div>
+        <label for="new-last">Last name</label>
+        <input type="text" id="new-last" autocomplete="off" spellcheck="false">
+      </div>
+      <button class="small" type="submit">Add</button>
+    </form>
+
+    <div id="roster-table"></div>
+    <p class="error" id="roster-error" hidden></p>
+    <p class="ok-msg" id="roster-ok" hidden></p>
+  </section>
+
+  <p class="error" id="fatal" hidden></p>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const token = location.hash.slice(1);
+
+  if (!token) {
+    $("fatal").textContent =
+      "This link is missing its console code. Use the full link printed by npm run init.";
+    $("fatal").hidden = false;
+    return;
+  }
+  $("launch-link").href = `/launch.html#${token}`;
+
+  let data = null;          // /api/teacher/:token payload (rooms, etc.)
+  let selectedRoomId = null;
+  let roster = [];
+  let renamingId = null;    // room currently showing its inline rename field
+
+  async function api(path, options) {
+    const res = await fetch(path, options);
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) { const e = new Error(body.error || "Something went wrong."); e.body = body; throw e; }
+    return body;
+  }
+
+  function showError(el, message) {
+    el.textContent = message;
+    el.hidden = false;
+    setTimeout(() => { el.hidden = true; }, 6000);
+  }
+
+  // --- rooms table -----------------------------------------------------------
+
+  function renderRooms() {
+    const host = $("rooms-table");
+    host.textContent = "";
+
+    if (!data.rooms.length) {
+      host.innerHTML = '<p class="empty">No rooms yet. Add one below.</p>';
+      return;
+    }
+
+    const table = document.createElement("table");
+    table.innerHTML =
+      "<thead><tr><th>Room</th><th class='num'>Students</th><th></th></tr></thead>";
+    const body = document.createElement("tbody");
+
+    for (const room of data.rooms) {
+      const tr = document.createElement("tr");
+
+      const name = document.createElement("td");
+      if (renamingId === room.id) {
+        const wrap = document.createElement("span");
+        wrap.className = "rename-row";
+        const input = document.createElement("input");
+        input.type = "text";
+        input.value = room.name;
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") renameRoom(room.id, input.value);
+          if (e.key === "Escape") { renamingId = null; renderRooms(); }
+        });
+        wrap.append(input);
+        name.append(wrap);
+        setTimeout(() => { input.focus(); input.select(); }, 0);
+      } else {
+        const dot = document.createElement("span");
+        dot.className = "dot" + (room.openSession ? " live" : "");
+        dot.title = room.openSession ? `"${room.openSession.title}" is open` : "Nothing open right now";
+
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "room-name-btn" + (room.id === selectedRoomId ? " selected" : "");
+        button.textContent = room.name;
+        button.addEventListener("click", () => selectRoom(room.id));
+
+        name.append(dot, button);
+      }
+
+      const count = document.createElement("td");
+      count.className = "num";
+      count.textContent = room.students;
+
+      const actions = document.createElement("td");
+      actions.className = "actions";
+      const rename = document.createElement("button");
+      rename.className = "small";
+      rename.textContent = "Rename";
+      rename.type = "button";
+      rename.addEventListener("click", () => { renamingId = room.id; renderRooms(); });
+
+      const del = document.createElement("button");
+      del.className = "small danger";
+      del.textContent = "Delete";
+      del.type = "button";
+      del.addEventListener("click", () => deleteRoom(room));
+
+      actions.append(rename, del);
+      tr.append(name, count, actions);
+      body.append(tr);
+    }
+    table.append(body);
+    host.append(table);
+  }
+
+  async function renameRoom(roomId, name) {
+    try {
+      await api(`/api/teacher/${encodeURIComponent(token)}/rooms/${roomId}/rename`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      renamingId = null;
+      await load();
+    } catch (err) {
+      showError($("rooms-error"), err.message);
+    }
+  }
+
+  async function deleteRoom(room) {
+    const warning = room.students
+      ? `Delete ${room.name}? ${room.students} student${room.students === 1 ? "" : "s"} ` +
+        `will be removed from it. This does not delete the students themselves.`
+      : `Delete ${room.name}?`;
+    if (!confirm(warning)) return;
+    try {
+      await api(`/api/teacher/${encodeURIComponent(token)}/rooms/${room.id}/delete`, { method: "POST" });
+      if (selectedRoomId === room.id) { selectedRoomId = null; $("roster-panel").hidden = true; }
+      await load();
+    } catch (err) {
+      showError($("rooms-error"), err.message);
+    }
+  }
+
+  $("add-room-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const input = $("new-room-name");
+    if (!input.value.trim()) return;
+    try {
+      const result = await api(`/api/teacher/${encodeURIComponent(token)}/rooms`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: input.value }),
+      });
+      input.value = "";
+      await load();
+      selectRoom(result.id);
+    } catch (err) {
+      showError($("rooms-error"), err.message);
+    }
+  });
+
+  // --- roster panel ------------------------------------------------------------
+
+  async function selectRoom(roomId) {
+    selectedRoomId = roomId;
+    renderRooms();
+    $("roster-panel").hidden = false;
+    const room = data.rooms.find((r) => r.id === roomId);
+    $("roster-room-name").textContent = room?.name ?? "";
+    await loadRoster();
+    $("roster-panel").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  async function loadRoster() {
+    const result = await api(
+      `/api/teacher/${encodeURIComponent(token)}/rooms/${selectedRoomId}/roster`
+    );
+    roster = result.students;
+    renderRoster();
+  }
+
+  function renderRoster() {
+    $("roster-count").textContent =
+      `${roster.length} student${roster.length === 1 ? "" : "s"}`;
+
+    const host = $("roster-table");
+    host.textContent = "";
+    if (!roster.length) {
+      host.innerHTML = '<p class="empty">Nobody on this roster yet -- add one below or import a file.</p>';
+      return;
+    }
+
+    const table = document.createElement("table");
+    table.innerHTML =
+      "<thead><tr><th>Student number</th><th>First name</th><th>Last name</th><th></th></tr></thead>";
+    const body = document.createElement("tbody");
+
+    const sorted = [...roster].sort((a, b) =>
+      (a.lastName || "").localeCompare(b.lastName || "") ||
+      (a.firstName || "").localeCompare(b.firstName || "") ||
+      a.studentNumber.localeCompare(b.studentNumber)
+    );
+
+    for (const student of sorted) {
+      const tr = document.createElement("tr");
+      const numberCell = editableCell(student, "studentNumber");
+      const firstCell = editableCell(student, "firstName");
+      const lastCell = editableCell(student, "lastName");
+
+      const actions = document.createElement("td");
+      actions.className = "actions";
+      const remove = document.createElement("button");
+      remove.className = "small danger";
+      remove.textContent = "Remove";
+      remove.type = "button";
+      remove.addEventListener("click", () => removeStudent(student));
+      actions.append(remove);
+
+      tr.append(numberCell, firstCell, lastCell, actions);
+      body.append(tr);
+    }
+    table.append(body);
+    host.append(table);
+  }
+
+  /** A table cell that becomes a text input on click and saves on blur/Enter. */
+  function editableCell(student, field) {
+    const td = document.createElement("td");
+    td.textContent = student[field] || (field === "studentNumber" ? "" : "—");
+    td.title = "Click to edit";
+    td.style.cursor = "text";
+
+    td.addEventListener("click", () => {
+      if (td.querySelector("input")) return;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = student[field] || "";
+      td.textContent = "";
+      td.append(input);
+      input.focus();
+      input.select();
+
+      const commit = async () => {
+        const value = input.value.trim();
+        if (value === (student[field] || "")) { renderRoster(); return; }
+        try {
+          await api(`/api/teacher/${encodeURIComponent(token)}/students/${student.id}`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ ...student, [field]: value }),
+          });
+          await loadRoster();
+          await load();   // room's student count / roster badge can change
+        } catch (err) {
+          showError($("roster-error"), err.message);
+          renderRoster();
+        }
+      };
+      input.addEventListener("blur", commit);
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") input.blur();
+        if (e.key === "Escape") renderRoster();
+      });
+    });
+    return td;
+  }
+
+  async function removeStudent(student) {
+    const name = [student.firstName, student.lastName].filter(Boolean).join(" ") || student.studentNumber;
+    if (!confirm(`Remove ${name} from this room? They stay enrolled in any other room.`)) return;
+    try {
+      await api(
+        `/api/teacher/${encodeURIComponent(token)}/rooms/${selectedRoomId}/students/${student.id}/remove`,
+        { method: "POST" }
+      );
+      await loadRoster();
+      await load();
+    } catch (err) {
+      showError($("roster-error"), err.message);
+    }
+  }
+
+  $("add-student-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const studentNumber = $("new-number").value.trim();
+    if (!studentNumber) return;
+    try {
+      await api(`/api/teacher/${encodeURIComponent(token)}/rooms/${selectedRoomId}/students`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          studentNumber,
+          firstName: $("new-first").value.trim(),
+          lastName: $("new-last").value.trim(),
+        }),
+      });
+      $("new-number").value = ""; $("new-first").value = ""; $("new-last").value = "";
+      $("new-number").focus();
+      await loadRoster();
+      await load();
+    } catch (err) {
+      showError($("roster-error"), err.message);
+    }
+  });
+
+  // --- import -------------------------------------------------------------------
+
+  $("import-btn").addEventListener("click", () => $("import-file").click());
+
+  $("import-file").addEventListener("change", async () => {
+    const file = $("import-file").files[0];
+    $("import-file").value = "";
+    if (!file) return;
+    try {
+      const csv = await file.text();
+      const result = await api(
+        `/api/teacher/${encodeURIComponent(token)}/rooms/${selectedRoomId}/import`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ csv }),
+        }
+      );
+      $("roster-ok").textContent =
+        `Imported ${result.imported} student${result.imported === 1 ? "" : "s"} from ${file.name}.`;
+      $("roster-ok").hidden = false;
+      setTimeout(() => { $("roster-ok").hidden = true; }, 6000);
+      await loadRoster();
+      await load();
+    } catch (err) {
+      showError($("roster-error"), err.message);
+    }
+  });
+
+  // --- start ---------------------------------------------------------------
+
+  async function load() {
+    data = await api(`/api/teacher/${encodeURIComponent(token)}`);
+    $("who").textContent = " " + data.teacher.name;
+    renderRooms();
+  }
+
+  load().catch((err) => {
+    $("fatal").textContent = err.message;
+    $("fatal").hidden = false;
+  });
+})();
+</script>
+</body>
+</html>

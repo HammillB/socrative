@@ -421,6 +421,94 @@ if (openJoin.status !== 200) {
   }
 }
 
+// --- 6e. rooms & rosters -----------------------------------------------------
+
+{
+  const roomsDb = new DatabaseSync(DB);
+  const consoleToken = roomsDb
+    .prepare(`SELECT console_token FROM teachers WHERE email = ?`)
+    .get("demo@school.test")?.console_token;
+  // Clean up anything a previous run of this exact block left behind, so it
+  // can be run over and over without accumulating rooms named E2EROOM.
+  roomsDb.exec(`DELETE FROM sections WHERE LOWER(name) = 'e2eroom'`);
+  roomsDb.close();
+
+  const created = await post(`/api/teacher/${consoleToken}/rooms`, { name: "E2EROOM" });
+  check("a room can be created", created.status === 200, created.body.error);
+
+  const dupe = await post(`/api/teacher/${consoleToken}/rooms`, { name: "e2eroom" });
+  check("a duplicate room name is refused, even differing only in case",
+    dupe.status === 400, dupe.body.error);
+
+  const roomId = created.body.id;
+
+  const added = await post(`/api/teacher/${consoleToken}/rooms/${roomId}/students`, {
+    studentNumber: "700001", firstName: "Ada", lastName: "Lovelace",
+  });
+  check("a student can be added to a room by hand", added.status === 200, added.body.error);
+
+  const imported = await post(`/api/teacher/${consoleToken}/rooms/${roomId}/import`, {
+    csv: "First Name,Last Name,Student ID,Email\nGrace,Hopper,700002,\nKatherine,Johnson,700003,",
+  });
+  check("a roster CSV can be imported", imported.status === 200, imported.body.error);
+  check("it imports every row", imported.body.imported === 2,
+    `imported=${imported.body.imported}`);
+
+  const rosterRes = await fetch(`${BASE}/api/teacher/${consoleToken}/rooms/${roomId}/roster`);
+  const roster = (await rosterRes.json()).students;
+  check("the roster now holds everyone added, by hand and by import",
+    roster.length === 3, `roster has ${roster.length}`);
+
+  const ada = roster.find((s) => s.studentNumber === "700001");
+  const edited = await post(`/api/teacher/${consoleToken}/students/${ada.id}`, {
+    studentNumber: "700001", firstName: "Ada", lastName: "Byron",
+  });
+  check("a student's own record can be edited", edited.status === 200, edited.body.error);
+
+  const afterEdit = await (await fetch(
+    `${BASE}/api/teacher/${consoleToken}/rooms/${roomId}/roster`
+  )).json();
+  check("the edit is reflected in the roster",
+    afterEdit.students.find((s) => s.id === ada.id)?.lastName === "Byron");
+
+  const removed = await post(
+    `/api/teacher/${consoleToken}/rooms/${roomId}/students/${ada.id}/remove`, {}
+  );
+  check("a student can be removed from one room's roster", removed.status === 200);
+
+  const afterRemove = await (await fetch(
+    `${BASE}/api/teacher/${consoleToken}/rooms/${roomId}/roster`
+  )).json();
+  check("removing does not delete the student record, only the enrollment",
+    afterRemove.students.length === 2 &&
+    !afterRemove.students.some((s) => s.id === ada.id));
+
+  // Launch a real, ungraded test into this room so there is something to
+  // refuse deleting past.
+  const quizzesRes = await fetch(`${BASE}/api/teacher/${consoleToken}`);
+  const quizId = (await quizzesRes.json()).quizzes[0].id;
+  const launched = await post(`/api/teacher/${consoleToken}/launch`, {
+    quizId, mode: "open", sectionId: roomId,
+  });
+  check("a test can be launched into the new room", launched.status === 200, launched.body.error);
+
+  const blockedDelete = await post(`/api/teacher/${consoleToken}/rooms/${roomId}/delete`, {});
+  check("a room cannot be deleted while a test is open in it",
+    blockedDelete.status === 409, blockedDelete.body.error);
+
+  const closeIt = await post(`/api/teacher/${consoleToken}/close`, {
+    sessionId: (await (await fetch(`${BASE}/api/teacher/${consoleToken}`)).json())
+      .sessions.find((s) => s.section === "E2EROOM")?.id,
+  });
+  check("closing the test frees the room", closeIt.status === 200, closeIt.body.error);
+
+  const deleted = await post(`/api/teacher/${consoleToken}/rooms/${roomId}/delete`, {});
+  check("the now-empty room can be deleted", deleted.status === 200, deleted.body.error);
+
+  check("an invented console token cannot manage rooms at all",
+    (await post(`/api/teacher/not-a-real-token/rooms`, { name: "X" })).status === 404);
+}
+
 // --- 7. the teacher's live board -------------------------------------------
 
 const boardDb = new DatabaseSync(DB);

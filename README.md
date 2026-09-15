@@ -72,7 +72,41 @@ have not looked at does not quietly become part of a graded test. Questions
 with no correct answer marked are refused outright rather than imported
 ungradeable.
 
-## Item analysis
+## Managing rooms and rosters
+
+A dedicated screen for the two things you actually do outside of test day:
+keeping the room list current and keeping a roster accurate.
+
+```
+Your rooms
+  INTSCIA3   6 students   [Rename] [Delete]
+  INTSCIA4   6 students   [Rename] [Delete]
+  [ New room name...              ] [Add room]
+
+INTSCIA3  6 students
+  [ Import a roster (.csv) ]
+  Student number [___] First name [___] Last name [___] [Add]
+
+  100001   Aurora     Bell        [Remove]
+  100002   George     Chen        [Remove]
+  ...
+```
+
+Click a room name to manage its roster below. Every cell in the roster
+table edits in place -- click it, type, click away or press Enter -- and
+**Import a roster (.csv)** reads the same column names Socrative's own
+roster export uses (`First Name`, `Last Name`, `Student ID`), sharing one
+parser with the command-line importer rather than a second copy that could
+quietly drift from it.
+
+**Removing a student from a room only removes that enrollment.** The
+student record, and their place in any other room, is untouched -- the same
+person can legitimately be on more than one roster. **Deleting a room is
+refused while a test is open in it**, the same rule that protects launching
+into a busy room, so a live test's roster can never be cut out from under
+it.
+
+## Item analysis## Item analysis
 
 Difficulty and discrimination, computed after each test -- the reason this
 project exists rather than staying on Socrative. Open the live board and
@@ -405,7 +439,7 @@ npm run dev      # in one terminal
 npm test         # in another
 ```
 
-103 checks covering both delivery modes, the launch console and the board, including the ones that
+118 checks covering both delivery modes, the launch console and the board, including the ones that
 would be expensive to get wrong: that a dead device resumes in the right
 place, that going back and skipping ahead are refused by the server in
 sequential mode, that an open test cannot be handed in with blanks, that

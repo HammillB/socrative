@@ -24,6 +24,7 @@ import {
   createQuestion, createAssessment, addAssessmentItem, createSession,
 } from "../src/db.js";
 import { choicesAreShuffleSafe } from "../src/app.js";
+import { parseCsv, pickColumn as pick } from "../src/csv.js";
 import { launchSettings, describeSettings, MODES } from "../src/delivery.js";
 
 function arg(name, fallback = null) {
@@ -31,41 +32,8 @@ function arg(name, fallback = null) {
   return i === -1 ? fallback : process.argv[i + 1];
 }
 
-/** Minimal RFC-4180 CSV reader: handles quoted fields and embedded commas. */
-function parseCsv(text) {
-  const rows = [];
-  let row = [], field = "", quoted = false;
-
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (quoted) {
-      if (ch === '"') {
-        if (text[i + 1] === '"') { field += '"'; i++; }
-        else quoted = false;
-      } else field += ch;
-      continue;
-    }
-    if (ch === '"') quoted = true;
-    else if (ch === ",") { row.push(field); field = ""; }
-    else if (ch === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
-    else if (ch !== "\r") field += ch;
-  }
-  if (field || row.length) { row.push(field); rows.push(row); }
-
-  const header = rows.shift().map((h) => h.replace(/^﻿/, "").trim());
-  return rows
-    .filter((r) => r.some((cell) => cell.trim() !== ""))
-    .map((r) => Object.fromEntries(header.map((h, i) => [h, (r[i] ?? "").trim()])));
-}
-
-/** Find a column by any of several likely spellings. */
-function pick(row, ...names) {
-  for (const name of names) {
-    const key = Object.keys(row).find((k) => k.toLowerCase() === name.toLowerCase());
-    if (key && row[key] !== "") return row[key];
-  }
-  return null;
-}
+// parseCsv/pick now live in src/csv.js, shared with the Rooms screen's
+// browser-side roster upload -- see the import above.
 
 // ---------------------------------------------------------------------------
 
