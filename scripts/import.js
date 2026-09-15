@@ -21,9 +21,8 @@ import { randomUUID } from "node:crypto";
 import { basename } from "node:path";
 import {
   nodeDriver, findTeacherByEmail, upsertSection, upsertStudent, enroll,
-  createQuestion, createAssessment, addAssessmentItem, createSession,
+  createSession, importQuizRows,
 } from "../src/db.js";
-import { choicesAreShuffleSafe } from "../src/app.js";
 import { parseCsv, pickColumn as pick } from "../src/csv.js";
 import { launchSettings, describeSettings, MODES } from "../src/delivery.js";
 
@@ -98,66 +97,31 @@ if (quizPath) {
   const rows = parseCsv(readFileSync(quizPath, "utf8"));
   const title = arg("title", basename(quizPath).replace(/\.csv$/i, "").replace(/^Quiz_/, ""));
 
-  assessmentId = await createAssessment(sql, teacher.id, {
-    title,
-    // Defaults for this quiz. What students actually get is decided when a
-    // session is launched, below or later via scripts/launch.js.
-    settings: launchSettings({ mode }),
-  });
+  // Defaults for this quiz. What students actually get is decided when a
+  // session is launched, below or later via scripts/launch.js.
+  const result = await importQuizRows(sql, teacher.id, title, rows, launchSettings({ mode }));
+  assessmentId = result.assessmentId;
 
-  const flagged = [], unshuffleable = [], skipped = [];
-  let position = 0, withExplanation = 0;
+  console.log(`Quiz: "${title}" -- ${result.imported} questions imported`);
 
-  for (const row of rows) {
-    const stem = pick(row, "Question");
-    const correct = (pick(row, "Correct") || "").trim().toUpperCase();
-    const review = pick(row, "Review");
-    // Optional. The PDF converter cannot produce these -- Socrative's export
-    // does not contain them -- so add a column called Explanation to the
-    // spreadsheet and they will be shown to students after they answer.
-    const explanation = pick(row, "Explanation", "Feedback", "Why");
-
-    const choices = [];
-    for (const letter of "ABCDEFGH") {
-      const text = pick(row, `Answer ${letter}`);
-      if (text) choices.push({ text, isCorrect: letter === correct });
-    }
-
-    const number = pick(row, "#") || String(position + 1);
-    if (!stem || choices.length < 2) { skipped.push(`Q${number}: no stem or too few choices`); continue; }
-    if (!correct || !choices.some((c) => c.isCorrect)) {
-      skipped.push(`Q${number}: no correct answer marked -- not imported`);
-      continue;
-    }
-
-    const questionId = await createQuestion(sql, teacher.id, { stem, choices, explanation });
-    if (explanation) withExplanation++;
-    await addAssessmentItem(sql, teacher.id, assessmentId, questionId, position++);
-
-    if (review) flagged.push(`Q${number}: ${review}`);
-    if (!choicesAreShuffleSafe(choices)) unshuffleable.push(`Q${number}`);
-  }
-
-  console.log(`Quiz: "${title}" -- ${position} questions imported`);
-
-  if (withExplanation < position) {
+  if (result.withExplanation < result.imported) {
     console.log(`
-  ${position - withExplanation} of ${position} questions have no explanation.`);
+  ${result.imported - result.withExplanation} of ${result.imported} questions have no explanation.`);
     console.log(`  Students will be told the correct answer but not why. To fix,`);
     console.log(`  add an "Explanation" column to the spreadsheet and re-import.`);
   }
 
-  if (skipped.length) {
-    console.log(`\n  NOT IMPORTED (${skipped.length}):`);
-    skipped.forEach((s) => console.log(`    ${s}`));
+  if (result.skipped.length) {
+    console.log(`\n  NOT IMPORTED (${result.skipped.length}):`);
+    result.skipped.forEach((s) => console.log(`    ${s}`));
   }
-  if (flagged.length) {
+  if (result.flagged.length) {
     console.log(`\n  Flagged by the converter -- check these against the PDF:`);
-    flagged.forEach((s) => console.log(`    ${s}`));
+    result.flagged.forEach((s) => console.log(`    ${s}`));
   }
-  if (unshuffleable.length) {
+  if (result.unshuffleable.length) {
     console.log(`\n  Choices will NOT be shuffled (they refer to each other):`);
-    console.log(`    ${unshuffleable.join(", ")}`);
+    console.log(`    ${result.unshuffleable.join(", ")}`);
   }
 }
 

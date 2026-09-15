@@ -11,6 +11,7 @@ import { Hono } from "hono";
 import * as db from "./db.js";
 import { launchSettings, MODES, MODE_LABELS, MODE_DESCRIPTIONS } from "./delivery.js";
 import { parseCsv } from "./csv.js";
+import { choicesAreShuffleSafe } from "./questions.js";
 
 // ------------------------------------------------------- deterministic order
 
@@ -42,17 +43,9 @@ function shuffled(items, random) {
 }
 
 /**
- * Choices that refer to one another cannot be safely reordered.
- *
- * "All of the above" is the obvious case and the one Socrative will happily
- * shuffle into nonsense. Detecting it costs nothing and prevents a question
- * that is wrong through no fault of the student.
+ * Choices that refer to one another cannot be safely reordered -- see
+ * choicesAreShuffleSafe in ./questions.js, imported below.
  */
-const SELF_REFERENTIAL = /\b(all|none|both)\b.*\b(above|these|answers)\b|\b(a|b|c|d)\s+and\s+(a|b|c|d)\b/i;
-
-export function choicesAreShuffleSafe(choices) {
-  return !choices.some((choice) => SELF_REFERENTIAL.test(choice.text));
-}
 
 /** Build one student's paper from the assessment and their seed. */
 export function buildPaper(questions, seed, settings) {
@@ -756,6 +749,166 @@ export function createApp({ getDriver, staticHandler }) {
         c.get("sql"), teacher.id, Number(c.req.param("sectionId")), rows
       );
       return c.json({ imported });
+    } catch (err) {
+      return fail(c, err.message);
+    }
+  });
+
+  // ------------------------------------------------------------------ library
+  //
+  // The quiz LIST itself already comes back from GET /api/teacher/:token
+  // (the launch screen needs the same id/title/question-count/modified data).
+  // These are the write side and the per-quiz detail the Library editor needs.
+
+  app.get("/api/teacher/:token/quizzes/:assessmentId", async (c) => {
+    const { teacher, error } = await requireTeacher(c);
+    if (error) return error;
+    const quiz = await db.getQuizDetail(c.get("sql"), teacher.id, Number(c.req.param("assessmentId")));
+    if (!quiz) return fail(c, "That quiz was not found.", 404);
+    return c.json(quiz);
+  });
+
+  app.post("/api/teacher/:token/quizzes", async (c) => {
+    const { teacher, error } = await requireTeacher(c);
+    if (error) return error;
+    const { title } = await c.req.json().catch(() => ({}));
+    const id = await db.createEmptyQuiz(c.get("sql"), teacher.id, title);
+    return c.json({ created: true, id });
+  });
+
+  app.post("/api/teacher/:token/quizzes/:assessmentId/rename", async (c) => {
+    const { teacher, error } = await requireTeacher(c);
+    if (error) return error;
+    const { title } = await c.req.json().catch(() => ({}));
+    try {
+      const ok = await db.renameQuiz(c.get("sql"), teacher.id, Number(c.req.param("assessmentId")), title);
+      if (!ok) return fail(c, "That quiz was not found.", 404);
+      return c.json({ renamed: true });
+    } catch (err) {
+      return fail(c, err.message);
+    }
+  });
+
+  app.post("/api/teacher/:token/quizzes/:assessmentId/delete", async (c) => {
+    const { teacher, error } = await requireTeacher(c);
+    if (error) return error;
+    try {
+      const ok = await db.deleteQuiz(c.get("sql"), teacher.id, Number(c.req.param("assessmentId")));
+      if (!ok) return fail(c, "That quiz was not found.", 404);
+      return c.json({ deleted: true });
+    } catch (err) {
+      return fail(c, err.message, 409);
+    }
+  });
+
+  /** Add one question, hand-built in the browser. Refused once the quiz has been given. */
+  app.post("/api/teacher/:token/quizzes/:assessmentId/questions", async (c) => {
+    const { teacher, error } = await requireTeacher(c);
+    if (error) return error;
+    const body = await c.req.json().catch(() => ({}));
+    try {
+      const questionId = await db.addQuestionToQuiz(
+        c.get("sql"), teacher.id, Number(c.req.param("assessmentId")),
+        {
+          stem: body.stem,
+          points: body.points || 1,
+          explanation: body.explanation || null,
+          choices: (body.choices || []).map((ch) => ({ text: ch.text, isCorrect: !!ch.isCorrect })),
+        }
+      );
+      return c.json({ added: true, id: questionId });
+    } catch (err) {
+      return fail(c, err.message);
+    }
+  });
+
+  app.post("/api/teacher/:token/quizzes/:assessmentId/questions/:questionId/remove", async (c) => {
+    const { teacher, error } = await requireTeacher(c);
+    if (error) return error;
+    try {
+      await db.removeQuestionFromQuiz(
+        c.get("sql"), teacher.id,
+        Number(c.req.param("assessmentId")), Number(c.req.param("questionId"))
+      );
+      return c.json({ removed: true });
+    } catch (err) {
+      return fail(c, err.message);
+    }
+  });
+
+  /** Wording only -- stem, choice text, explanation. Always allowed; never touches scoring. */
+  app.post("/api/teacher/:token/questions/:questionId/wording", async (c) => {
+    const { teacher, error } = await requireTeacher(c);
+    if (error) return error;
+    const body = await c.req.json().catch(() => ({}));
+    try {
+      await db.updateQuestionWording(c.get("sql"), teacher.id, Number(c.req.param("questionId")), {
+        stem: body.stem, explanation: body.explanation, choices: body.choices,
+      });
+      return c.json({ updated: true });
+    } catch (err) {
+      return fail(c, err.message);
+    }
+  });
+
+  app.post("/api/teacher/:token/quizzes/:assessmentId/questions/:questionId/points", async (c) => {
+    const { teacher, error } = await requireTeacher(c);
+    if (error) return error;
+    const { points } = await c.req.json().catch(() => ({}));
+    try {
+      const ok = await db.updateQuestionPoints(
+        c.get("sql"), teacher.id,
+        Number(c.req.param("assessmentId")), Number(c.req.param("questionId")), points
+      );
+      if (!ok) return fail(c, "That question was not found.", 404);
+      return c.json({ updated: true });
+    } catch (err) {
+      return fail(c, err.message);
+    }
+  });
+
+  /**
+   * Fix a question's key from the Library, not just from a live test's
+   * report -- the same regradeQuestion either way, so a key fixed here
+   * rescopes every existing response exactly as it would from the report.
+   */
+  app.post("/api/teacher/:token/questions/:questionId/regrade", async (c) => {
+    const { teacher, error } = await requireTeacher(c);
+    if (error) return error;
+    const { correctChoiceId } = await c.req.json().catch(() => ({}));
+    if (!correctChoiceId) return fail(c, "correctChoiceId is required.");
+    try {
+      const result = await db.regradeQuestion(c.get("sql"), teacher.id, {
+        questionId: Number(c.req.param("questionId")),
+        correctChoiceId: Number(correctChoiceId),
+      });
+      return c.json({ regraded: true, ...result });
+    } catch (err) {
+      return fail(c, err.message);
+    }
+  });
+
+  /** Import a whole quiz from a spreadsheet -- the browser reads the file and sends its raw text. */
+  app.post("/api/teacher/:token/quizzes/import", async (c) => {
+    const { teacher, error } = await requireTeacher(c);
+    if (error) return error;
+    const { csv, title } = await c.req.json().catch(() => ({}));
+    if (!csv || !csv.trim()) return fail(c, "That file looked empty.");
+
+    let rows;
+    try {
+      rows = parseCsv(csv);
+    } catch {
+      return fail(c, "Could not read that as a CSV file.");
+    }
+    try {
+      const result = await db.importQuizRows(
+        c.get("sql"), teacher.id,
+        String(title || "Untitled Quiz").trim() || "Untitled Quiz",
+        rows,
+        launchSettings({})
+      );
+      return c.json(result);
     } catch (err) {
       return fail(c, err.message);
     }

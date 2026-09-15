@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Library</title>
+<style>
+  :root {
+    --ground: #f1f4f3; --card: #fff; --ink: #18211f; --muted: #66756f;
+    --line: #d5ded9; --line-soft: #e8eeeb; --accent: #0c6a5e; --accent-soft: #e3f0ec;
+    --bad: #a8491a; --bad-bg: #f7e2d7; --warn-bg: #fbf0d8; --warn: #8a6508;
+    --good: #10715f; --good-bg: #d9ece6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 26px 20px 80px; }
+
+  header { display: flex; justify-content: space-between; align-items: center;
+           gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+  h1 { font-size: 22px; margin: 0; }
+  a.nav { color: var(--accent); font-weight: 600; text-decoration: none; font-size: 14px;
+          margin-right: 12px; }
+  a.nav:hover { text-decoration: underline; }
+  .who { color: var(--muted); font-size: 15px; }
+
+  .panel { background: var(--card); border: 1px solid var(--line);
+           border-radius: 10px; padding: 22px 24px; margin-bottom: 18px; }
+  .panel h2 { font-size: 17px; margin: 0 0 4px; }
+  .panel .lede { color: var(--muted); font-size: 14.5px; margin: 0 0 16px; }
+  .panel-head { display: flex; justify-content: space-between; align-items: center;
+                gap: 14px; margin-bottom: 4px; flex-wrap: wrap; }
+
+  button { font: inherit; font-weight: 600; cursor: pointer; border-radius: 7px;
+           padding: 9px 16px; border: 1px solid var(--line); background: #fff; color: var(--ink); }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { opacity: .92; }
+  button.danger { color: var(--bad); border-color: #e3c4b3; }
+  button.danger:hover { background: var(--bad-bg); }
+  button.small { padding: 5px 11px; font-size: 13px; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.back { background: none; border: 0; color: var(--accent); padding: 0 0 12px; }
+  input[type=text], input[type=number], textarea, select {
+    font: inherit; padding: 9px 11px; border: 1px solid var(--line);
+    border-radius: 6px; background: #fff; color: var(--ink); width: 100%;
+  }
+  textarea { resize: vertical; min-height: 54px; }
+  input:focus-visible, button:focus-visible, textarea:focus-visible {
+    outline: 3px solid var(--accent); outline-offset: 2px;
+  }
+  label.field span { display: block; font-size: 12px; font-weight: 700; color: var(--muted);
+                      margin-bottom: 4px; text-transform: uppercase; letter-spacing: .03em; }
+
+  .search { width: 100%; margin-bottom: 4px; }
+  .listhead { display: flex; padding: 10px 12px 8px; font-size: 11.5px;
+              text-transform: uppercase; letter-spacing: .05em; color: var(--muted);
+              font-weight: 700; border-bottom: 1px solid var(--line); }
+  .listhead .when { margin-left: auto; }
+  .quiz-row { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left;
+              padding: 13px 12px; border: 0; border-bottom: 1px solid var(--line-soft);
+              background: none; font: inherit; color: var(--ink); cursor: pointer; }
+  .quiz-row:hover { background: var(--ground); }
+  .quiz-row .name { font-weight: 600; flex: 1; }
+  .quiz-row .count { color: var(--muted); font-size: 13.5px; }
+  .quiz-row .when { color: var(--muted); font-size: 13.5px; white-space: nowrap; min-width: 90px;
+                     text-align: right; }
+  .lock-pill { font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+               padding: 2px 7px; border-radius: 10px; background: var(--warn-bg); color: var(--warn); }
+
+  .new-quiz { display: flex; gap: 10px; margin-top: 14px; }
+  .new-quiz input { flex: 1; }
+
+  .import-row { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
+
+  .empty { color: var(--muted); padding: 14px 0; text-align: center; }
+  .error { color: var(--bad); font-weight: 600; margin-top: 12px; font-size: 14px; }
+  .ok-msg { color: var(--good); font-weight: 600; margin-top: 12px; font-size: 14px; }
+
+  /* --- editor --- */
+  #editor-title-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  #editor-title-row h2 { flex: 1 1 auto; min-width: 200px; }
+  #editor-title { font-size: 20px; font-weight: 700; border: 1px solid transparent;
+                  border-radius: 6px; padding: 4px 8px; margin: -4px 0 -4px -8px;
+                  background: none; width: auto; max-width: 100%; }
+  #editor-title:hover, #editor-title:focus { border-color: var(--line); background: #fff; }
+  .used-note { background: var(--warn-bg); color: var(--warn); border-radius: 7px;
+               padding: 10px 14px; font-size: 13.5px; margin: 10px 0 4px; }
+
+  .qcard { border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; margin-top: 12px; }
+  .qcard-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+  .qcard-head .num { font-weight: 700; color: var(--muted); }
+  .qcard-head .pts { margin-left: auto; color: var(--muted); font-size: 13px; }
+  .qcard-stem { font-size: 15.5px; line-height: 1.45; margin: 0 0 10px; }
+  .qcard-choices { list-style: none; margin: 0 0 8px; padding: 0; }
+  .qcard-choices li { display: flex; gap: 8px; padding: 5px 0; font-size: 14.5px; }
+  .qcard-choices li.correct { color: var(--good); font-weight: 600; }
+  .qcard-choices .letter { font-weight: 700; width: 1.3em; flex: none; }
+  .qcard-explain { color: var(--muted); font-size: 13.5px; margin: 6px 0 0; }
+  .qcard-actions { display: flex; gap: 8px; margin-top: 12px; }
+
+  /* the editing form, shared by "edit a question" and "add a question" */
+  .qform { border: 1px dashed var(--line); border-radius: 8px; padding: 18px; margin-top: 14px; }
+  .qform .grid { display: grid; grid-template-columns: 1fr 120px; gap: 14px; margin-bottom: 12px; }
+  .choice-row { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+  .choice-row input[type=radio] { width: 20px; height: 20px; flex: none; accent-color: var(--accent); }
+  .choice-row input[type=text] { flex: 1; }
+  .choice-row button { flex: none; padding: 7px 10px; }
+  .qform-actions { display: flex; gap: 10px; margin-top: 14px; }
+  .locked-fields-note { color: var(--muted); font-size: 13px; margin-top: 4px; }
+
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Library</h1>
+    <span>
+      <a class="nav" id="launch-link" href="#">Launch</a>
+      <a class="nav" id="rooms-link" href="#">Rooms</a>
+      <span class="who" id="who"></span>
+    </span>
+  </header>
+
+  <!-- 1. quiz list ---------------------------------------------------- -->
+  <section class="panel" id="list-panel">
+    <div class="panel-head">
+      <div>
+        <h2>Your quizzes</h2>
+        <p class="lede">Click a quiz to open it. Build one from scratch or import a spreadsheet.</p>
+      </div>
+    </div>
+    <input type="search" class="search" id="search" placeholder="Search your quizzes"
+           autocomplete="off" spellcheck="false">
+    <div class="listhead"><span>Name</span><span class="when">Modified</span></div>
+    <div id="quiz-list"></div>
+
+    <form class="new-quiz" id="new-quiz-form">
+      <input type="text" id="new-quiz-title" placeholder="New quiz title"
+             autocomplete="off" spellcheck="false">
+      <button class="primary" type="submit">Create</button>
+    </form>
+
+    <div class="import-row">
+      <button class="small" id="import-btn" type="button">Import a quiz (.csv)</button>
+      <input type="file" id="import-file" accept=".csv,text/csv" hidden>
+      <span style="color:var(--muted); font-size:13px">
+        Columns: Question, Answer A..E, Correct, optional Explanation
+      </span>
+    </div>
+    <p class="error" id="list-error" hidden></p>
+    <p class="ok-msg" id="list-ok" hidden></p>
+  </section>
+
+  <!-- 2. editor --------------------------------------------------------- -->
+  <section class="panel" id="editor-panel" hidden>
+    <button class="back" id="editor-back" type="button">&larr; Back to Library</button>
+
+    <div id="editor-title-row">
+      <h2><input type="text" id="editor-title"></h2>
+      <span style="color:var(--muted); font-size:13.5px" id="editor-count"></span>
+      <button class="small danger" id="delete-quiz-btn" type="button">Delete quiz</button>
+    </div>
+    <div class="used-note" id="used-note" hidden></div>
+
+    <div id="question-list"></div>
+
+    <div id="add-question-host"></div>
+    <button class="primary" id="add-question-btn" type="button" style="margin-top:14px">
+      + Add a question
+    </button>
+
+    <p class="error" id="editor-error" hidden></p>
+    <p class="ok-msg" id="editor-ok" hidden></p>
+  </section>
+
+  <p class="error" id="fatal" hidden></p>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const token = location.hash.slice(1);
+  const LETTERS = "ABCDEFGH";
+
+  if (!token) {
+    $("fatal").textContent =
+      "This link is missing its console code. Use the full link printed by npm run init.";
+    $("fatal").hidden = false;
+    return;
+  }
+  $("launch-link").href = `/launch.html#${token}`;
+  $("rooms-link").href = `/rooms.html#${token}`;
+
+  let data = null;             // /api/teacher/:token payload
+  let currentQuiz = null;      // the open quiz's full detail, while editing
+  let editingQuestionId = null; // which question card is showing its edit form
+
+  async function api(path, options) {
+    const res = await fetch(path, options);
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) { const e = new Error(body.error || "Something went wrong."); e.body = body; throw e; }
+    return body;
+  }
+
+  function flash(el, message, ok = true) {
+    el.textContent = message;
+    el.hidden = false;
+    setTimeout(() => { el.hidden = true; }, ok ? 5000 : 8000);
+  }
+
+  function ago(iso) {
+    const then = new Date((iso || "").replace(" ", "T") + "Z");
+    if (Number.isNaN(then.getTime())) return "";
+    const mins = Math.max(0, Math.round((Date.now() - then.getTime()) / 60000));
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins} minute${mins === 1 ? "" : "s"} ago`;
+    const hours = Math.round(mins / 60);
+    if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+    const days = Math.round(hours / 24);
+    if (days < 31) return `${days} day${days === 1 ? "" : "s"} ago`;
+    return `${Math.round(days / 30)} month${Math.round(days / 30) === 1 ? "" : "s"} ago`;
+  }
+
+  // ============================================================ quiz list
+
+  function renderList() {
+    const host = $("quiz-list");
+    const term = $("search").value.trim().toLowerCase();
+    host.textContent = "";
+
+    const matches = data.quizzes.filter((q) => q.title.toLowerCase().includes(term));
+    if (!matches.length) {
+      host.innerHTML = `<p class="empty">${
+        data.quizzes.length ? "Nothing matches that." : "No quizzes yet -- create one or import a file."
+      }</p>`;
+      return;
+    }
+
+    for (const quiz of matches) {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "quiz-row";
+
+      const name = document.createElement("span");
+      name.className = "name";
+      name.textContent = quiz.title;
+
+      const count = document.createElement("span");
+      count.className = "count";
+      count.textContent = `${quiz.questions} question${quiz.questions === 1 ? "" : "s"}`;
+
+      const when = document.createElement("span");
+      when.className = "when";
+      when.textContent = ago(quiz.updated_at);
+
+      row.append(name, count, when);
+      row.addEventListener("click", () => openQuiz(quiz.id));
+      host.append(row);
+    }
+  }
+
+  $("search").addEventListener("input", renderList);
+
+  $("new-quiz-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const input = $("new-quiz-title");
+    if (!input.value.trim()) return;
+    try {
+      const result = await api(`/api/teacher/${encodeURIComponent(token)}/quizzes`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: input.value }),
+      });
+      input.value = "";
+      await load();
+      openQuiz(result.id);
+    } catch (err) {
+      flash($("list-error"), err.message, false);
+    }
+  });
+
+  $("import-btn").addEventListener("click", () => $("import-file").click());
+  $("import-file").addEventListener("change", async () => {
+    const file = $("import-file").files[0];
+    $("import-file").value = "";
+    if (!file) return;
+    try {
+      const csv = await file.text();
+      const title = file.name.replace(/\.csv$/i, "").replace(/^Quiz_/i, "");
+      const result = await api(`/api/teacher/${encodeURIComponent(token)}/quizzes/import`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ csv, title }),
+      });
+      const bits = [`Imported "${result.title}" -- ${result.imported} question` +
+                    `${result.imported === 1 ? "" : "s"}.`];
+      if (result.skipped.length) bits.push(`${result.skipped.length} row(s) skipped: ${result.skipped.join("; ")}`);
+      if (result.flagged.length) bits.push(`${result.flagged.length} row(s) flagged by the converter -- worth a look.`);
+      flash($("list-ok"), bits.join(" "));
+      await load();
+      openQuiz(result.assessmentId);
+    } catch (err) {
+      flash($("list-error"), err.message, false);
+    }
+  });
+
+  // ================================================================ editor
+
+  async function openQuiz(id) {
+    currentQuiz = await api(`/api/teacher/${encodeURIComponent(token)}/quizzes/${id}`);
+    editingQuestionId = null;
+    $("list-panel").hidden = true;
+    $("editor-panel").hidden = false;
+    renderEditor();
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }
+
+  $("editor-back").addEventListener("click", async () => {
+    currentQuiz = null;
+    $("editor-panel").hidden = true;
+    $("list-panel").hidden = false;
+    await load();
+  });
+
+  function renderEditor() {
+    const q = currentQuiz;
+    $("editor-title").value = q.title;
+    $("editor-count").textContent =
+      `${q.questions.length} question${q.questions.length === 1 ? "" : "s"}`;
+    $("delete-quiz-btn").disabled = q.locked;
+    $("delete-quiz-btn").title = q.locked
+      ? "This quiz has been given, so deleting it is disabled -- it would erase that history."
+      : "";
+
+    $("used-note").hidden = !q.locked;
+    if (q.locked) {
+      $("used-note").textContent =
+        `This quiz has been given ${q.sessionCount} time${q.sessionCount === 1 ? "" : "s"}. ` +
+        `Its question list and points are locked so past scores stay accurate -- but you can ` +
+        `still fix wording, or fix the answer key (which rescores every response to it).`;
+    }
+
+    const host = $("question-list");
+    host.textContent = "";
+    q.questions.forEach((question, i) => host.append(questionCard(question, i)));
+
+    $("add-question-btn").hidden = q.locked;
+    $("add-question-host").textContent = "";
+  }
+
+  function questionCard(question, index) {
+    if (editingQuestionId === question.id) return questionForm(question, index);
+
+    const card = document.createElement("div");
+    card.className = "qcard";
+
+    const head = document.createElement("div");
+    head.className = "qcard-head";
+    const num = document.createElement("span");
+    num.className = "num";
+    num.textContent = `${index + 1}.`;
+    const pts = document.createElement("span");
+    pts.className = "pts";
+    pts.textContent = `${question.points} point${question.points === 1 ? "" : "s"}`;
+    head.append(num, pts);
+
+    const stem = document.createElement("p");
+    stem.className = "qcard-stem";
+    stem.textContent = question.stem;
+
+    const list = document.createElement("ul");
+    list.className = "qcard-choices";
+    question.choices.forEach((choice, ci) => {
+      const li = document.createElement("li");
+      if (choice.isCorrect) li.className = "correct";
+      const letter = document.createElement("span");
+      letter.className = "letter";
+      letter.textContent = LETTERS[ci];
+      const text = document.createElement("span");
+      text.textContent = choice.text;
+      li.append(letter, text);
+      list.append(li);
+    });
+
+    card.append(head, stem, list);
+
+    if (question.explanation) {
+      const explain = document.createElement("p");
+      explain.className = "qcard-explain";
+      explain.textContent = "Explanation: " + question.explanation;
+      card.append(explain);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "qcard-actions";
+    const edit = document.createElement("button");
+    edit.className = "small";
+    edit.type = "button";
+    edit.textContent = "Edit";
+    edit.addEventListener("click", () => { editingQuestionId = question.id; renderEditor(); });
+    actions.append(edit);
+
+    if (!currentQuiz.locked) {
+      const remove = document.createElement("button");
+      remove.className = "small danger";
+      remove.type = "button";
+      remove.textContent = "Remove";
+      remove.addEventListener("click", () => removeQuestion(question));
+      actions.append(remove);
+    }
+    card.append(actions);
+    return card;
+  }
+
+  /**
+   * One form used for both editing an existing question and adding a new
+   * one. What it is allowed to submit differs: on a locked quiz, only
+   * wording (stem, choice text, explanation) and the correct answer can
+   * change -- points and the choice list itself are fixed once a quiz has
+   * real history behind it.
+   */
+  function questionForm(question, index) {
+    const isNew = !question;
+    const locked = currentQuiz.locked && !isNew;
+    const wrap = document.createElement("div");
+    wrap.className = "qform";
+
+    const heading = document.createElement("div");
+    heading.style.cssText = "font-weight:700;margin-bottom:10px";
+    heading.textContent = isNew ? "New question" : `Editing question ${index + 1}`;
+    wrap.append(heading);
+
+    const grid = document.createElement("div");
+    grid.className = "grid";
+
+    const stemField = document.createElement("label");
+    stemField.className = "field";
+    stemField.innerHTML = "<span>Question</span>";
+    const stemInput = document.createElement("textarea");
+    stemInput.value = question?.stem ?? "";
+    stemField.append(stemInput);
+
+    const ptsField = document.createElement("label");
+    ptsField.className = "field";
+    ptsField.innerHTML = "<span>Points</span>";
+    const ptsInput = document.createElement("input");
+    ptsInput.type = "number"; ptsInput.min = "0.5"; ptsInput.step = "0.5";
+    ptsInput.value = question?.points ?? 1;
+    ptsInput.disabled = locked;
+    ptsField.append(ptsInput);
+    if (locked) {
+      const note = document.createElement("div");
+      note.className = "locked-fields-note";
+      note.textContent = "Locked -- this quiz has been given.";
+      ptsField.append(note);
+    }
+
+    grid.append(stemField, ptsField);
+    wrap.append(grid);
+
+    const choicesLabel = document.createElement("div");
+    choicesLabel.className = "field";
+    choicesLabel.innerHTML = "<span>Answers -- pick the correct one</span>";
+    wrap.append(choicesLabel);
+
+    const choiceRows = [];
+    const startingChoices = question?.choices ?? [
+      { text: "", isCorrect: true }, { text: "", isCorrect: false },
+    ];
+    const choiceHost = document.createElement("div");
+
+    function addChoiceRow(choice) {
+      const row = document.createElement("div");
+      row.className = "choice-row";
+
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = "correct-" + (question?.id ?? "new");
+      radio.checked = !!choice.isCorrect;
+
+      const text = document.createElement("input");
+      text.type = "text";
+      text.value = choice.text ?? "";
+      text.placeholder = "Answer text";
+
+      const entry = { id: choice.id ?? null, radio, text };
+      choiceRows.push(entry);
+
+      row.append(radio, text);
+
+      if (!locked && choiceRows.length > 2) {
+        const del = document.createElement("button");
+        del.type = "button";
+        del.textContent = "✕";
+        del.title = "Remove this answer";
+        del.addEventListener("click", () => {
+          const i = choiceRows.indexOf(entry);
+          if (i >= 0) choiceRows.splice(i, 1);
+          row.remove();
+        });
+        row.append(del);
+      }
+      choiceHost.append(row);
+    }
+    startingChoices.forEach(addChoiceRow);
+    wrap.append(choiceHost);
+
+    if (!locked) {
+      const addChoice = document.createElement("button");
+      addChoice.type = "button";
+      addChoice.className = "small";
+      addChoice.textContent = "+ Add an answer";
+      addChoice.style.marginTop = "6px";
+      addChoice.addEventListener("click", () => {
+        if (choiceRows.length >= 8) return;
+        addChoiceRow({ text: "", isCorrect: false });
+      });
+      wrap.append(addChoice);
+    }
+
+    const explainField = document.createElement("label");
+    explainField.className = "field";
+    explainField.style.marginTop = "14px";
+    explainField.style.display = "block";
+    explainField.innerHTML = "<span>Explanation (shown after answering, optional)</span>";
+    const explainInput = document.createElement("textarea");
+    explainInput.value = question?.explanation ?? "";
+    explainField.append(explainInput);
+    wrap.append(explainField);
+
+    const errorMsg = document.createElement("p");
+    errorMsg.className = "error";
+    errorMsg.hidden = true;
+    wrap.append(errorMsg);
+
+    const actions = document.createElement("div");
+    actions.className = "qform-actions";
+    const save = document.createElement("button");
+    save.type = "button";
+    save.className = "primary";
+    save.textContent = isNew ? "Add question" : "Save";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.textContent = "Cancel";
+    cancel.addEventListener("click", () => { editingQuestionId = null; renderEditor(); });
+    actions.append(save, cancel);
+    wrap.append(actions);
+
+    save.addEventListener("click", async () => {
+      errorMsg.hidden = true;
+      const stem = stemInput.value.trim();
+      const filled = choiceRows.filter((c) => c.text.value.trim());
+      if (!stem) { errorMsg.textContent = "The question needs some text."; errorMsg.hidden = false; return; }
+      if (filled.length < 2) { errorMsg.textContent = "Give it at least two answers."; errorMsg.hidden = false; return; }
+      if (!choiceRows.some((c) => c.radio.checked && c.text.value.trim())) {
+        errorMsg.textContent = "Choose which answer is correct.";
+        errorMsg.hidden = false;
+        return;
+      }
+
+      save.disabled = true;
+      try {
+        if (isNew) {
+          await api(`/api/teacher/${encodeURIComponent(token)}/quizzes/${currentQuiz.id}/questions`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              stem, points: Number(ptsInput.value) || 1,
+              explanation: explainInput.value.trim(),
+              choices: filled.map((c) => ({ text: c.text.value.trim(), isCorrect: c.radio.checked })),
+            }),
+          });
+        } else {
+          await api(`/api/teacher/${encodeURIComponent(token)}/questions/${question.id}/wording`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              stem, explanation: explainInput.value.trim(),
+              choices: filled.filter((c) => c.id).map((c) => ({ id: c.id, text: c.text.value.trim() })),
+            }),
+          });
+          if (!locked) {
+            await api(
+              `/api/teacher/${encodeURIComponent(token)}/quizzes/${currentQuiz.id}/questions/${question.id}/points`,
+              {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ points: Number(ptsInput.value) || 1 }),
+              }
+            );
+          }
+          // Correctness changes go through regrade -- always, so a key fixed
+          // here rescopes every existing response exactly as it would from
+          // the live report, whether or not anyone has answered it yet.
+          const picked = choiceRows.find((c) => c.radio.checked && c.id);
+          const current = question.choices.find((c) => c.isCorrect);
+          if (picked && picked.id !== current?.id) {
+            const result = await api(`/api/teacher/${encodeURIComponent(token)}/questions/${question.id}/regrade`, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ correctChoiceId: picked.id }),
+            });
+            if (result.scoresChanged) {
+              flash($("editor-ok"),
+                `Answer key updated -- ${result.scoresChanged} of ${result.responsesRescored} ` +
+                `response(s) changed right/wrong.`);
+            }
+          }
+        }
+        editingQuestionId = null;
+        currentQuiz = await api(`/api/teacher/${encodeURIComponent(token)}/quizzes/${currentQuiz.id}`);
+        renderEditor();
+        await load();
+      } catch (err) {
+        errorMsg.textContent = err.message;
+        errorMsg.hidden = false;
+        save.disabled = false;
+      }
+    });
+
+    return wrap;
+  }
+
+  $("add-question-btn").addEventListener("click", () => {
+    $("add-question-host").textContent = "";
+    $("add-question-host").append(questionForm(null, currentQuiz.questions.length));
+    $("add-question-btn").hidden = true;
+  });
+
+  async function removeQuestion(question) {
+    if (!confirm(`Remove this question from "${currentQuiz.title}"? It has never been given, ` +
+                 `so nothing is lost -- it is simply gone.`)) return;
+    try {
+      await api(
+        `/api/teacher/${encodeURIComponent(token)}/quizzes/${currentQuiz.id}/questions/${question.id}/remove`,
+        { method: "POST" }
+      );
+      currentQuiz = await api(`/api/teacher/${encodeURIComponent(token)}/quizzes/${currentQuiz.id}`);
+      renderEditor();
+      await load();
+    } catch (err) {
+      flash($("editor-error"), err.message, false);
+    }
+  }
+
+  $("editor-title").addEventListener("blur", async () => {
+    const value = $("editor-title").value.trim();
+    if (!value || value === currentQuiz.title) { $("editor-title").value = currentQuiz.title; return; }
+    try {
+      await api(`/api/teacher/${encodeURIComponent(token)}/quizzes/${currentQuiz.id}/rename`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: value }),
+      });
+      currentQuiz.title = value;
+      await load();
+    } catch (err) {
+      $("editor-title").value = currentQuiz.title;
+      flash($("editor-error"), err.message, false);
+    }
+  });
+  $("editor-title").addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
+
+  $("delete-quiz-btn").addEventListener("click", async () => {
+    if (!confirm(`Delete "${currentQuiz.title}" and every question in it? This cannot be undone.`)) return;
+    try {
+      await api(`/api/teacher/${encodeURIComponent(token)}/quizzes/${currentQuiz.id}/delete`, { method: "POST" });
+      currentQuiz = null;
+      $("editor-panel").hidden = true;
+      $("list-panel").hidden = false;
+      await load();
+    } catch (err) {
+      flash($("editor-error"), err.message, false);
+    }
+  });
+
+  // ================================================================= start
+
+  async function load() {
+    data = await api(`/api/teacher/${encodeURIComponent(token)}`);
+    $("who").textContent = " " + data.teacher.name;
+    if (!currentQuiz) renderList();
+  }
+
+  load().catch((err) => {
+    $("fatal").textContent = err.message;
+    $("fatal").hidden = false;
+  });
+})();
+</script>
+</body>
+</html>

@@ -305,16 +305,22 @@ if (openJoin.status !== 200) {
       FROM sessions s JOIN sections sec ON sec.id = s.section_id
      WHERE LOWER(sec.name) IN (LOWER(?), LOWER(?)) AND s.state <> 'closed'`)
     .all(ROOM, OPEN_ROOM);
-  const questionCount = modeDb.prepare(`SELECT COUNT(*) AS n FROM questions`).get().n;
-  const quizCount = modeDb.prepare(`SELECT COUNT(*) AS n FROM assessments`).get().n;
+  // Count questions belonging to THIS ONE quiz specifically -- not every
+  // quiz in the database, since the Library now legitimately holds more
+  // than one (a teacher's whole item bank, plus whatever fixtures other
+  // parts of this suite create and clean up around it).
+  const thisQuizQuestions = sessions.length
+    ? modeDb.prepare(`SELECT COUNT(*) AS n FROM assessment_items WHERE assessment_id = ?`)
+        .get(sessions[0].assessment_id).n
+    : 0;
   modeDb.close();
 
   check("both sessions run the same quiz", sessions.length === 2 &&
     sessions[0].assessment_id === sessions[1].assessment_id);
   check("and they are in different rooms, since a room runs one at a time",
     sessions[0].section_id !== sessions[1].section_id);
-  check("launching in a second mode did not duplicate the questions",
-    quizCount === 1, `${quizCount} quiz(zes), ${questionCount} questions`);
+  check("launching in a second mode did not duplicate that quiz's questions",
+    thisQuizQuestions === 25, `${thisQuizQuestions} questions on the shared quiz`);
 
   const modes = sessions.map((row) => JSON.parse(row.settings).delivery).sort();
   check("the two sessions carry different delivery modes",
@@ -507,6 +513,176 @@ if (openJoin.status !== 200) {
 
   check("an invented console token cannot manage rooms at all",
     (await post(`/api/teacher/not-a-real-token/rooms`, { name: "X" })).status === 404);
+}
+
+// --- 6f. the quiz library -----------------------------------------------------
+
+{
+  const libDb = new DatabaseSync(DB);
+  const consoleToken = libDb
+    .prepare(`SELECT console_token FROM teachers WHERE email = ?`)
+    .get("demo@school.test")?.console_token;
+  const teacherId = libDb
+    .prepare(`SELECT id FROM teachers WHERE email = ?`).get("demo@school.test").id;
+
+  // A scratch room to launch the draft quiz into, reusing SPARE the same way
+  // the console tests already do. Whatever is open there gets closed first.
+  let spare = libDb
+    .prepare(`SELECT id FROM sections WHERE teacher_id = ? AND name = 'SPARE'`).get(teacherId);
+  if (!spare) {
+    libDb.prepare(`INSERT INTO sections (teacher_id, name) VALUES (?, 'SPARE')`).run(teacherId);
+    spare = libDb.prepare(`SELECT id FROM sections WHERE teacher_id = ? AND name = 'SPARE'`).get(teacherId);
+  }
+  libDb.prepare(`UPDATE sessions SET state = 'closed' WHERE section_id = ?`).run(spare.id);
+  // SPARE otherwise has no roster -- give it the one student this block needs.
+  const spareStudent = libDb
+    .prepare(`SELECT id FROM students WHERE teacher_id = ? AND student_number = '100001'`).get(teacherId);
+  if (spareStudent) {
+    libDb.prepare(`INSERT OR IGNORE INTO enrollments (student_id, section_id) VALUES (?, ?)`)
+      .run(spareStudent.id, spare.id);
+  }
+  // Delete any quiz a previous run of this block left behind, so it can be
+  // run repeatedly. Deletion here goes straight to the database rather than
+  // through the API specifically BECAUSE these old quizzes may have been
+  // launched (locked) by a previous run -- the API would correctly refuse.
+  for (const row of libDb.prepare(
+    `SELECT id FROM assessments WHERE teacher_id = ? AND title IN ('E2E Draft Quiz', 'E2E CSV Import')`
+  ).all(teacherId)) {
+    libDb.exec(`
+      DELETE FROM events WHERE attempt_id IN (SELECT id FROM attempts WHERE session_id IN
+        (SELECT id FROM sessions WHERE assessment_id = ${row.id}));
+      DELETE FROM responses WHERE attempt_id IN (SELECT id FROM attempts WHERE session_id IN
+        (SELECT id FROM sessions WHERE assessment_id = ${row.id}));
+      DELETE FROM attempts WHERE session_id IN (SELECT id FROM sessions WHERE assessment_id = ${row.id});
+      DELETE FROM sessions WHERE assessment_id = ${row.id};
+      DELETE FROM assessment_items WHERE assessment_id = ${row.id};
+      DELETE FROM choices WHERE question_id IN
+        (SELECT question_id FROM assessment_items WHERE assessment_id = ${row.id});
+    `);
+    libDb.prepare(`DELETE FROM assessments WHERE id = ?`).run(row.id);
+  }
+  libDb.close();
+
+  // --- build a quiz from scratch, entirely unused so far ----------------------
+
+  const created = await post(`/api/teacher/${consoleToken}/quizzes`, { title: "E2E Draft Quiz" });
+  check("an empty quiz can be created", created.status === 200, created.body.error);
+  const quizId = created.body.id;
+
+  const q1 = await post(`/api/teacher/${consoleToken}/quizzes/${quizId}/questions`, {
+    stem: "2 + 2 = ?", points: 1,
+    choices: [{ text: "3", isCorrect: false }, { text: "4", isCorrect: true }, { text: "5", isCorrect: false }],
+  });
+  check("a question can be added to an unused quiz", q1.status === 200, q1.body.error);
+  const questionId = q1.body.id;
+
+  const badKey = await post(`/api/teacher/${consoleToken}/quizzes/${quizId}/questions`, {
+    stem: "Two correct answers", points: 1,
+    choices: [{ text: "A", isCorrect: true }, { text: "B", isCorrect: true }],
+  });
+  check("a question needs EXACTLY one correct answer", badKey.status === 400);
+
+  const worded = await post(`/api/teacher/${consoleToken}/questions/${questionId}/wording`, {
+    stem: "What is 2 + 2?", explanation: "Basic addition.",
+  });
+  check("wording can be edited before the quiz is used", worded.status === 200, worded.body.error);
+
+  const pointsSet = await post(
+    `/api/teacher/${consoleToken}/quizzes/${quizId}/questions/${questionId}/points`, { points: 3 }
+  );
+  check("points can be changed before the quiz is used", pointsSet.status === 200, pointsSet.body.error);
+
+  const beforeLaunch = await (await fetch(`${BASE}/api/teacher/${consoleToken}/quizzes/${quizId}`)).json();
+  check("an unused quiz reports itself unlocked", beforeLaunch.locked === false);
+  check("the point change actually landed",
+    beforeLaunch.questions[0].points === 3, `points=${beforeLaunch.questions[0].points}`);
+
+  // --- launch it for real: one student actually answers the question ----------
+
+  const launched = await post(`/api/teacher/${consoleToken}/launch`, {
+    quizId, mode: "open", sectionId: spare.id,
+  });
+  check("the draft quiz can be launched", launched.status === 200, launched.body.error);
+
+  const studentJoin = await post("/api/join", { room: "SPARE", studentNumber: "100001" });
+  check("a student can join the newly launched quiz", studentJoin.status === 200, studentJoin.body.error);
+  const wrongChoiceId = studentJoin.body.paper[0].choices.find((c) => c.text !== "4")?.id
+    ?? studentJoin.body.paper[0].choices[0].id;
+  await post("/api/answer", {
+    token: studentJoin.body.token, questionId, choiceId: wrongChoiceId,
+  });
+
+  // --- now used: the lock takes hold -------------------------------------------
+
+  const afterLaunch = await (await fetch(`${BASE}/api/teacher/${consoleToken}/quizzes/${quizId}`)).json();
+  check("a launched quiz reports itself locked", afterLaunch.locked === true);
+  check("its session count is reported", afterLaunch.sessionCount === 1);
+
+  const blockedAdd = await post(`/api/teacher/${consoleToken}/quizzes/${quizId}/questions`, {
+    stem: "Too late", points: 1,
+    choices: [{ text: "A", isCorrect: true }, { text: "B", isCorrect: false }],
+  });
+  check("adding a question to a used quiz is refused", blockedAdd.status === 400, blockedAdd.body.error);
+
+  const blockedRemove = await post(
+    `/api/teacher/${consoleToken}/quizzes/${quizId}/questions/${questionId}/remove`, {}
+  );
+  check("removing a question from a used quiz is refused", blockedRemove.status === 400);
+
+  const blockedPoints = await post(
+    `/api/teacher/${consoleToken}/quizzes/${quizId}/questions/${questionId}/points`, { points: 9 }
+  );
+  check("changing points on a used quiz is refused", blockedPoints.status === 400);
+
+  const stillWorded = await post(`/api/teacher/${consoleToken}/questions/${questionId}/wording`, {
+    stem: "What is 2 + 2, really?", explanation: "Wording can always be fixed.",
+  });
+  check("wording can STILL be edited after the quiz is used", stillWorded.status === 200);
+
+  const blockedDelete = await post(`/api/teacher/${consoleToken}/quizzes/${quizId}/delete`, {});
+  check("deleting a used quiz is refused, to protect its grading history",
+    blockedDelete.status === 409, blockedDelete.body.error);
+
+  // The one retroactive change that IS allowed on a used quiz: the answer
+  // key itself, through the same regradeQuestion the live report uses. The
+  // student above answered wrong on purpose, so flipping the key to what
+  // they picked should flip their score too -- checked directly, not assumed.
+  const regraded = await post(`/api/teacher/${consoleToken}/questions/${questionId}/regrade`, {
+    correctChoiceId: wrongChoiceId,
+  });
+  check("a used question's key can still be regraded from the Library",
+    regraded.status === 200, regraded.body.error);
+  check("regrading from the Library actually rescores the response",
+    regraded.body.responsesRescored === 1 && regraded.body.scoresChanged === 1,
+    JSON.stringify(regraded.body));
+
+  // --- CSV import -----------------------------------------------------------
+
+  const csvImport = await post(`/api/teacher/${consoleToken}/quizzes/import`, {
+    title: "E2E CSV Import",
+    csv: "#,Question,Answer A,Answer B,Answer C,Correct,Explanation\n" +
+         "1,Sky color?,Red,Blue,Green,B,The atmosphere scatters blue light most.\n" +
+         "2,No key marked,X,Y,Z,,\n",
+  });
+  check("a quiz can be imported from a spreadsheet", csvImport.status === 200, csvImport.body.error);
+  check("rows with a marked key are imported", csvImport.body.imported === 1,
+    `imported=${csvImport.body.imported}`);
+  check("a row with no correct answer marked is skipped, not silently guessed",
+    csvImport.body.skipped.length === 1);
+
+  const importedQuiz = await (
+    await fetch(`${BASE}/api/teacher/${consoleToken}/quizzes/${csvImport.body.assessmentId}`)
+  ).json();
+  check("the imported question carries its explanation",
+    importedQuiz.questions[0]?.explanation?.includes("scatters blue light"));
+
+  // --- deleting an unused quiz is fine -----------------------------------------
+
+  const unusedDeleted = await post(`/api/teacher/${consoleToken}/quizzes/${csvImport.body.assessmentId}/delete`, {});
+  check("a quiz that was never given can be deleted freely", unusedDeleted.status === 200);
+
+  check("an invented console token cannot touch the library at all",
+    (await post(`/api/teacher/not-a-real-token/quizzes`, { title: "X" })).status === 404);
 }
 
 // --- 7. the teacher's live board -------------------------------------------

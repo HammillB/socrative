@@ -97,6 +97,7 @@
     <h1>Rooms</h1>
     <span>
       <a class="nav" id="launch-link" href="#">Launch a test &rarr;</a>
+      <a class="nav" id="library-link" href="#">Library</a>
       <span class="who" id="who"></span>
     </span>
   </header>
@@ -165,6 +166,7 @@
     return;
   }
   $("launch-link").href = `/launch.html#${token}`;
+  $("library-link").href = `/library.html#${token}`;
 
   let data = null;          // /api/teacher/:token payload (rooms, etc.)
   let selectedRoomId = null;

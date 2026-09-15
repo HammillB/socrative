@@ -147,6 +147,7 @@
     <h1 id="heading">Launch a Test</h1>
     <span>
       <a class="nav-link" id="rooms-link" href="#">Rooms</a>
+      <a class="nav-link" id="library-link" href="#">Library</a>
       <select id="room" aria-label="Room"></select>
       <span class="who" id="who"></span>
     </span>
@@ -248,6 +249,7 @@
     return;
   }
   $("rooms-link").href = `/rooms.html#${token}`;
+  $("library-link").href = `/library.html#${token}`;
 
   const chosen = {
     quizId: null, quizTitle: "", mode: "sequential",

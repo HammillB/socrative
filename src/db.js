@@ -12,6 +12,7 @@
  */
 
 import { pickColumn } from "./csv.js";
+import { choicesAreShuffleSafe } from "./questions.js";
 
 // ------------------------------------------------------------------ drivers
 
@@ -327,6 +328,284 @@ export async function addAssessmentItem(sql, teacherId, assessmentId, questionId
      VALUES (?, ?, ?)`,
     [assessmentId, questionId, position]
   );
+}
+
+/**
+ * Build a whole quiz from parsed CSV rows, in Socrative's own import
+ * template shape (Question, Answer A..E, Correct, an optional Explanation
+ * column). Shared by the command-line importer and the Library screen's
+ * browser upload, so a spreadsheet is read the same way regardless of which
+ * door it came through.
+ *
+ * A row with no stem, too few choices, or no marked correct answer is
+ * skipped rather than imported half-broken -- an ungradeable question is
+ * worse than a missing one, and the caller is told exactly which rows and
+ * why so nothing is silently lost.
+ */
+export async function importQuizRows(sql, teacherId, title, rows, settings = {}) {
+  const assessmentId = await createAssessment(sql, teacherId, { title, settings });
+
+  const flagged = [], unshuffleable = [], skipped = [];
+  let position = 0, withExplanation = 0;
+
+  for (const row of rows) {
+    const stem = pickColumn(row, "Question");
+    const correct = (pickColumn(row, "Correct") || "").trim().toUpperCase();
+    const review = pickColumn(row, "Review");
+    // Optional. The PDF converter cannot produce these -- Socrative's own
+    // export does not contain them -- so a spreadsheet with an Explanation
+    // column is shown to students after they answer, when the quiz is run
+    // in Instant Feedback mode.
+    const explanation = pickColumn(row, "Explanation", "Feedback", "Why");
+
+    const choices = [];
+    for (const letter of "ABCDEFGH") {
+      const text = pickColumn(row, `Answer ${letter}`);
+      if (text) choices.push({ text, isCorrect: letter === correct });
+    }
+
+    const number = pickColumn(row, "#") || String(position + 1);
+    if (!stem || choices.length < 2) {
+      skipped.push(`Q${number}: no stem or too few choices`);
+      continue;
+    }
+    if (!correct || !choices.some((c) => c.isCorrect)) {
+      skipped.push(`Q${number}: no correct answer marked -- not imported`);
+      continue;
+    }
+
+    const questionId = await createQuestion(sql, teacherId, { stem, choices, explanation });
+    if (explanation) withExplanation++;
+    await addAssessmentItem(sql, teacherId, assessmentId, questionId, position++);
+
+    if (review) flagged.push(`Q${number}: ${review}`);
+    if (!choicesAreShuffleSafe(choices)) unshuffleable.push(`Q${number}`);
+  }
+
+  return { assessmentId, title, imported: position, withExplanation, skipped, flagged, unshuffleable };
+}
+
+// ----------------------------------------------------------- quiz library
+
+/** Whether a quiz has ever been given. Governs what the editor allows. */
+export async function getQuizUsage(sql, teacherId, assessmentId) {
+  const owned = await sql.get(
+    `SELECT id FROM assessments WHERE id = ? AND teacher_id = ?`,
+    [assessmentId, teacherId]
+  );
+  if (!owned) return null;
+  const row = await sql.get(
+    `SELECT COUNT(*) AS n FROM sessions WHERE assessment_id = ?`,
+    [assessmentId]
+  );
+  return { everUsed: row.n > 0, sessionCount: row.n };
+}
+
+/**
+ * A quiz's full content, for the editor.
+ *
+ * `locked` mirrors getQuizUsage: once a quiz has been given even once, its
+ * question LIST is frozen (add, remove, reorder, and points all change the
+ * denominator every past attempt's score is computed against, live, on
+ * every read -- there is no per-attempt snapshot). Wording -- the stem, a
+ * choice's text, the explanation -- can always be fixed regardless, since
+ * none of it touches scoring. Which choice is correct can always be fixed
+ * too, through regradeQuestion, which is deliberately retroactive and
+ * rescopes every existing response rather than silently drifting from it.
+ */
+export async function getQuizDetail(sql, teacherId, assessmentId) {
+  const quiz = await sql.get(
+    `SELECT id, title, created_at, updated_at FROM assessments WHERE id = ? AND teacher_id = ?`,
+    [assessmentId, teacherId]
+  );
+  if (!quiz) return null;
+
+  const usage = await sql.get(
+    `SELECT COUNT(*) AS n FROM sessions WHERE assessment_id = ?`,
+    [assessmentId]
+  );
+
+  const questions = await sql.all(
+    `SELECT ai.position, q.id, q.stem, q.media, q.points, q.explanation, q.explanation_media
+       FROM assessment_items ai
+       JOIN questions q ON q.id = ai.question_id
+      WHERE ai.assessment_id = ?
+      ORDER BY ai.position`,
+    [assessmentId]
+  );
+  for (const question of questions) {
+    const choices = await sql.all(
+      `SELECT id, position, text, media, is_correct
+         FROM choices WHERE question_id = ? ORDER BY position`,
+      [question.id]
+    );
+    question.choices = choices.map((c) => ({
+      id: c.id, text: c.text, media: c.media, isCorrect: !!c.is_correct,
+    }));
+  }
+
+  return {
+    id: quiz.id, title: quiz.title, createdAt: quiz.created_at, updatedAt: quiz.updated_at,
+    locked: usage.n > 0, sessionCount: usage.n,
+    questions,
+  };
+}
+
+export async function createEmptyQuiz(sql, teacherId, title) {
+  const trimmed = String(title ?? "").trim() || "Untitled Quiz";
+  return createAssessment(sql, teacherId, { title: trimmed, settings: {} });
+}
+
+export async function renameQuiz(sql, teacherId, assessmentId, title) {
+  const trimmed = String(title ?? "").trim();
+  if (!trimmed) throw new Error("Give the quiz a title.");
+  const { changes } = await sql.run(
+    `UPDATE assessments SET title = ?, updated_at = datetime('now') WHERE id = ? AND teacher_id = ?`,
+    [trimmed, assessmentId, teacherId]
+  );
+  return changes > 0;
+}
+
+/**
+ * Delete a whole quiz. Refused once it has ever been given: sessions.
+ * assessment_id cascades, which would silently take every attempt and
+ * response ever recorded against it down too -- an entire class's grading
+ * history for one careless click. A quiz nobody has launched carries no
+ * such history, so deleting it is unconditionally safe.
+ */
+export async function deleteQuiz(sql, teacherId, assessmentId) {
+  const owned = await sql.get(
+    `SELECT id FROM assessments WHERE id = ? AND teacher_id = ?`,
+    [assessmentId, teacherId]
+  );
+  if (!owned) return false;
+
+  const usage = await sql.get(
+    `SELECT COUNT(*) AS n FROM sessions WHERE assessment_id = ?`,
+    [assessmentId]
+  );
+  if (usage.n > 0) {
+    throw new Error(
+      `This quiz has been given ${usage.n} time${usage.n === 1 ? "" : "s"}. Deleting it ` +
+      `would erase that history, so it is refused.`
+    );
+  }
+
+  await sql.run(`DELETE FROM assessments WHERE id = ?`, [assessmentId]);
+  return true;
+}
+
+/** Add a new question to a quiz that has never been given. */
+export async function addQuestionToQuiz(sql, teacherId, assessmentId, question) {
+  const quiz = await sql.get(
+    `SELECT id FROM assessments WHERE id = ? AND teacher_id = ?`,
+    [assessmentId, teacherId]
+  );
+  if (!quiz) throw new Error("That quiz was not found.");
+
+  const usage = await sql.get(
+    `SELECT COUNT(*) AS n FROM sessions WHERE assessment_id = ?`,
+    [assessmentId]
+  );
+  if (usage.n > 0) {
+    throw new Error("This quiz has already been given, so its question list is locked.");
+  }
+
+  const next = await sql.get(
+    `SELECT COALESCE(MAX(position), -1) + 1 AS p FROM assessment_items WHERE assessment_id = ?`,
+    [assessmentId]
+  );
+  const questionId = await createQuestion(sql, teacherId, question);
+  await addAssessmentItem(sql, teacherId, assessmentId, questionId, next.p);
+  await sql.run(`UPDATE assessments SET updated_at = datetime('now') WHERE id = ?`, [assessmentId]);
+  return questionId;
+}
+
+/**
+ * Remove a question from a quiz that has never been given, and delete the
+ * question outright -- safe only because "never given" means no attempt has
+ * ever answered it, so there is no response row anywhere pointing at it.
+ */
+export async function removeQuestionFromQuiz(sql, teacherId, assessmentId, questionId) {
+  const quiz = await sql.get(
+    `SELECT id FROM assessments WHERE id = ? AND teacher_id = ?`,
+    [assessmentId, teacherId]
+  );
+  if (!quiz) throw new Error("That quiz was not found.");
+
+  const usage = await sql.get(
+    `SELECT COUNT(*) AS n FROM sessions WHERE assessment_id = ?`,
+    [assessmentId]
+  );
+  if (usage.n > 0) {
+    throw new Error("This quiz has already been given, so its question list is locked.");
+  }
+
+  const owns = await sql.get(
+    `SELECT 1 AS ok FROM questions WHERE id = ? AND teacher_id = ?`,
+    [questionId, teacherId]
+  );
+  if (!owns) throw new Error("That question was not found.");
+
+  await sql.run(`DELETE FROM questions WHERE id = ?`, [questionId]);   // choices cascade
+  await sql.run(`UPDATE assessments SET updated_at = datetime('now') WHERE id = ?`, [assessmentId]);
+  return true;
+}
+
+/**
+ * Fix a question's WORDING -- the stem, a choice's text, the explanation.
+ * Deliberately separate from points (locked once a quiz has history, since
+ * it changes the scoring denominator) and from which choice is correct
+ * (always changed through regradeQuestion instead, which rescopes every
+ * existing response). None of what this function touches can retroactively
+ * move anyone's score, so it is never locked.
+ */
+export async function updateQuestionWording(sql, teacherId, questionId, { stem, explanation, choices }) {
+  const question = await sql.get(
+    `SELECT id FROM questions WHERE id = ? AND teacher_id = ?`,
+    [questionId, teacherId]
+  );
+  if (!question) throw new Error("That question was not found.");
+
+  const trimmedStem = String(stem ?? "").trim();
+  if (!trimmedStem) throw new Error("A question needs a stem.");
+
+  await sql.run(
+    `UPDATE questions SET stem = ?, explanation = ? WHERE id = ?`,
+    [trimmedStem, (explanation || "").trim() || null, questionId]
+  );
+
+  if (Array.isArray(choices)) {
+    for (const choice of choices) {
+      if (!choice.id) continue;
+      const trimmed = String(choice.text ?? "").trim();
+      if (!trimmed) continue;
+      await sql.run(
+        `UPDATE choices SET text = ? WHERE id = ? AND question_id = ?`,
+        [trimmed, choice.id, questionId]
+      );
+    }
+  }
+  return true;
+}
+
+/** Points can only move while a quiz has never been given -- see getQuizDetail. */
+export async function updateQuestionPoints(sql, teacherId, assessmentId, questionId, points) {
+  const usage = await sql.get(
+    `SELECT COUNT(*) AS n FROM sessions WHERE assessment_id = ?`,
+    [assessmentId]
+  );
+  if (usage.n > 0) {
+    throw new Error("This quiz has already been given, so its points are locked.");
+  }
+  const value = Number(points);
+  if (!Number.isFinite(value) || value <= 0) throw new Error("Points must be a positive number.");
+
+  const { changes } = await sql.run(
+    `UPDATE questions SET points = ? WHERE id = ? AND teacher_id = ?`,
+    [value, questionId, teacherId]
+  );
+  return changes > 0;
 }
 
 /**

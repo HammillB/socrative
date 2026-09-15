@@ -106,7 +106,50 @@ refused while a test is open in it**, the same rule that protects launching
 into a busy room, so a live test's roster can never be cut out from under
 it.
 
-## Item analysis## Item analysis
+## Building and importing a quiz library
+
+A screen for the quizzes themselves -- write one from scratch in the
+browser, or import a spreadsheet, without touching the command line.
+
+```
+Your quizzes
+  heat_test           25 questions   21 hours ago
+  Photosynthesis      12 questions   3 days ago
+  [ New quiz title...              ] [Create]
+  [ Import a quiz (.csv) ]
+
+heat_test  -- 25 questions
+  1.  Absolute zero happens when                          3 points
+      A  all particles stop moving        Correct
+      B  water freezes
+      C  we reach a vacuum
+      Explanation: The definition of absolute zero.        [Edit] [Remove]
+  + Add a question
+```
+
+**Import** reads the same CSV the PDF converter and command-line importer
+produce (`Question`, `Answer A..H`, `Correct`, optional `Explanation`), through
+one shared function so the browser and the CLI can never quietly disagree
+about what counts as a valid row. Anything with no marked correct answer is
+skipped rather than guessed at, and the import summary says exactly what was
+skipped and why.
+
+**A quiz locks once it has ever been given.** Every score on the live board
+and in the report is computed live against the current question list, not
+frozen at test time -- so adding, removing, or reordering questions, or
+changing their points, would silently rewrite every past student's grade.
+Once `sessionCount > 0`, the editor refuses all four. What stays open
+regardless: fixing wording (the stem, a choice's text, the explanation --
+none of it touches scoring), and fixing the correct answer, which goes
+through the same rescoring used by [Fixing a wrong answer key](#fixing-a-wrong-answer-key)
+below rather than silently drifting from it. Deleting a quiz is refused for
+the same reason once it has history -- there would be nothing left to
+compute those old scores from.
+
+An unused quiz has none of those restrictions: add, remove, or reorder
+questions and points freely until the day it is first launched.
+
+
 
 Difficulty and discrimination, computed after each test -- the reason this
 project exists rather than staying on Socrative. Open the live board and
@@ -316,8 +359,10 @@ schema.sql          the whole data model, with the reasoning in comments
 src/db.js           every SQL statement in the application
 src/app.js          routes, seeded shuffling, paper assembly
 src/dev-server.js   local Node server (the D1 entry point is still to come)
-scripts/init.js     create the database, add a teacher
 src/delivery.js     launch settings, and what each delivery mode means
+src/csv.js          CSV parsing, shared by the CLI importer and the browser
+src/questions.js    small pure helpers about question content (e.g. shuffle safety)
+scripts/init.js     create the database, add a teacher
 scripts/import.js   load a roster, load a quiz, open a session
 scripts/launch.js   run an already-imported quiz, in either mode
 scripts/e2e-test.js the test suite
@@ -325,6 +370,8 @@ scripts/demo-class.js  drive a fake class through a test
 web/test.html       the student test page
 web/live.html       the teacher's live results board
 web/launch.html     the teacher's launch screen
+web/rooms.html      manage rooms and rosters
+web/library.html    build and import quizzes
 ```
 
 ### Things worth knowing
@@ -460,8 +507,8 @@ something to look at on the board.
 
 ## Next
 
-Question authoring in the browser, Google sign-in for teachers, CSV export for
-the gradebook, regrade-a-question, and the Cloudflare entry point.
+Google sign-in for teachers, CSV export for the gradebook, and the
+Cloudflare entry point.
 
 Then the features that are the actual reason for building this: item analysis
 after every test, standards mastery across the year, automatic accommodations,
