@@ -33,6 +33,19 @@
   .back { background: none; border: 0; font: inherit; color: var(--accent);
           font-weight: 600; cursor: pointer; padding: 0 0 12px; }
 
+  /* start screen: one tile today, room to sit more beside it later without
+     a redesign -- deliberately just Quiz, not everything Socrative offers */
+  .tiles { display: flex; justify-content: center; gap: 34px; padding: 34px 0 26px; }
+  .tile { display: flex; flex-direction: column; align-items: center; gap: 12px;
+          background: none; border: 0; cursor: pointer; font: inherit; color: var(--ink); }
+  .tile .circle { width: 88px; height: 88px; border-radius: 50%;
+                   border: 2px solid var(--accent); background: var(--accent-soft);
+                   color: var(--accent); display: flex; align-items: center;
+                   justify-content: center; transition: background .12s, transform .12s; }
+  .tile:hover .circle { background: var(--accent); color: #fff; transform: translateY(-2px); }
+  .tile .label { font-weight: 700; font-size: 15px; }
+  .tile:focus-visible .circle { outline: 3px solid var(--accent); outline-offset: 3px; }
+
   /* search + quiz list */
   .search { width: 100%; font: inherit; padding: 11px 14px; margin-bottom: 4px;
             border: 1px solid var(--line); border-radius: 7px; background: #fff;
@@ -147,8 +160,24 @@
       </div>
     </section>
 
+    <!-- 0. start -------------------------------------------------------- -->
+    <section class="panel" id="start">
+      <div class="tiles">
+        <button class="tile" id="tile-quiz" type="button">
+          <span class="circle" aria-hidden="true">
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none">
+              <rect x="5" y="3" width="14" height="18" rx="2" stroke="currentColor" stroke-width="1.6"/>
+              <path d="M8.5 8h7M8.5 12h7M8.5 16h4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+          </span>
+          <span class="label">Quiz</span>
+        </button>
+      </div>
+    </section>
+
     <!-- 1. pick a quiz ------------------------------------------------ -->
-    <section class="panel" id="pick">
+    <section class="panel" id="pick" hidden>
+      <button class="back" id="pick-back" type="button">&larr; Back</button>
       <h2 id="pick-title">Which quiz?</h2>
       <p class="lede">Choose a quiz to launch, then set how it runs.</p>
       <input type="search" class="search" id="search" placeholder="Search your quizzes"
@@ -288,7 +317,8 @@
 
     const open = current?.openSession;
     $("busy").hidden = !open;
-    $("pick").hidden = !!open;
+    $("start").hidden = !!open;
+    $("pick").hidden = true;
     $("setup").hidden = true;
     $("result").hidden = true;
 
@@ -423,6 +453,17 @@
   });
 
   $("search").addEventListener("input", renderQuizzes);
+
+  $("tile-quiz").addEventListener("click", () => {
+    $("start").hidden = true;
+    $("pick").hidden = false;
+    $("search").focus();
+  });
+
+  $("pick-back").addEventListener("click", () => {
+    $("pick").hidden = true;
+    $("start").hidden = false;
+  });
 
   $("back").addEventListener("click", () => {
     $("setup").hidden = true;

@@ -166,6 +166,11 @@ Import puts the questions in; **launch** decides how a particular run behaves.
 delivery method, set the toggles, and it starts running in that room — with a
 link to the live board.
 
+Opens on a start screen, not straight into a quiz list -- one tile, **Quiz**,
+since that is the only kind of activity this builds (no Space Race, no Exit
+Ticket, no Quick Question; Socrative has all three, this deliberately does
+not). Switching rooms in the top-right corner always returns here first.
+
 Pick the room at the top, choose a quiz, then set how it runs:
 
 ```
