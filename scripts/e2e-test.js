@@ -582,6 +582,26 @@ if (!dashboardToken) {
   check("the room name does NOT open the report",
     (await fetch(`${BASE}/api/report/${ROOM}`)).status === 404);
 
+  // --- 7d. discrimination on the live board itself ----------------------------
+  //
+  // The live board and the report now share one function for this arithmetic
+  // (rankAndScore in db.js) specifically so they cannot quietly disagree. The
+  // strongest check of that is comparing their two live answers to the exact
+  // same question, fetched through two different endpoints, rather than
+  // re-deriving the expected numbers a second time here.
+
+  const boardAgain = await (await fetch(`${BASE}/api/live/${dashboardToken}`)).json();
+  const boardTricky = boardAgain.questions.find((q) => q.id === firstQuestionId);
+
+  check("the live board reports the same completed-paper count as the report",
+    boardAgain.itemAnalysis.students === report.students,
+    `board=${boardAgain.itemAnalysis.students} report=${report.students}`);
+  check("the live board reports the same group size as the report",
+    boardAgain.itemAnalysis.groupSize === report.groupSize);
+  check("the live board's discrimination for a question matches the report's exactly",
+    boardTricky?.discrimination === trickyQ.discrimination,
+    `board=${boardTricky?.discrimination} report=${trickyQ.discrimination}`);
+
   // --- 7b. Finish Activity -- the live board's one irreversible action -----
   //
   // Run last on purpose: it closes ROOM's session, so nothing after this can

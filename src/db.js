@@ -507,6 +507,65 @@ export async function logEvent(sql, attemptId, kind) {
  * Without that conversion the grid is unreadable: thirty students picking the
  * same wrong answer would show up as thirty different letters.
  */
+/**
+ * Difficulty and discrimination for a set of COMPLETED attempts.
+ *
+ * Pure computation, no database access, so it can be shared by the live
+ * board (which already has this data sitting in memory from its own
+ * queries) and the item analysis report (which fetches it fresh) without
+ * the two ever quietly computing the number two different ways.
+ *
+ * The method is the standard one, unchanged since Kelley (1939): rank
+ * attempts by total score, split off the top and bottom ~27% as the groups
+ * most likely to separate a good item from a bad one, and compare how each
+ * group did on every question.
+ *
+ *   difficulty (p)      = correct / answered, over every completed attempt
+ *   discrimination (D)  = (top group's p on this item) - (bottom group's p)
+ */
+function rankAndScore(submittedAttemptIds, responses) {
+  const submitted = new Set(submittedAttemptIds);
+  const totalByAttempt = new Map(submittedAttemptIds.map((id) => [id, 0]));
+  const byQuestion = new Map();
+
+  for (const r of responses) {
+    if (!submitted.has(r.attempt_id)) continue;
+    totalByAttempt.set(r.attempt_id, (totalByAttempt.get(r.attempt_id) ?? 0) + (r.points_earned ?? 0));
+    if (!byQuestion.has(r.question_id)) byQuestion.set(r.question_id, []);
+    byQuestion.get(r.question_id).push(r);
+  }
+
+  // With this few data points per class, rounding matters: floor(n/2) keeps
+  // the two groups from overlapping when n is small, and a lone completed
+  // attempt (n<2) gets no group at all -- there is nothing to compare it to.
+  const ranked = [...totalByAttempt.entries()].sort((a, b) => b[1] - a[1]);
+  const n = ranked.length;
+  const groupSize = n >= 2 ? Math.max(1, Math.min(Math.floor(n / 2), Math.round(n * 0.27))) : 0;
+  const topIds = new Set(ranked.slice(0, groupSize).map(([id]) => id));
+  const bottomIds = new Set(ranked.slice(n - groupSize, n).map(([id]) => id));
+
+  const stats = new Map();
+  for (const [questionId, rs] of byQuestion) {
+    const answered = rs.length;
+    const correct = rs.filter((r) => r.is_correct).length;
+    const difficulty = answered ? Math.round((correct / answered) * 100) / 100 : null;
+
+    let discrimination = null;
+    if (groupSize >= 1) {
+      const topRs = rs.filter((r) => topIds.has(r.attempt_id));
+      const bottomRs = rs.filter((r) => bottomIds.has(r.attempt_id));
+      if (topRs.length && bottomRs.length) {
+        const topP = topRs.filter((r) => r.is_correct).length / topRs.length;
+        const bottomP = bottomRs.filter((r) => r.is_correct).length / bottomRs.length;
+        discrimination = Math.round((topP - bottomP) * 100) / 100;
+      }
+    }
+    stats.set(questionId, { answered, difficulty, discrimination });
+  }
+
+  return { n, groupSize, topIds, bottomIds, byQuestion, stats };
+}
+
 export async function getLiveBoard(sql, dashboardToken) {
   const LETTERS = "ABCDEFGH";
 
@@ -657,6 +716,17 @@ export async function getLiveBoard(sql, dashboardToken) {
     question.struggling = seen.length >= 3 && question.percent !== null && question.percent < 40;
   }
 
+  // Discrimination, the item-analysis number, computed over COMPLETED papers
+  // only -- unlike question.percent above, which is live and counts anyone
+  // who has answered so far. A student stuck mid-test would otherwise skew
+  // which questions look like they are "discriminating" well.
+  const submittedIds = attempts.filter((a) => a.status === "submitted").map((a) => a.id);
+  const { n: itemStudents, groupSize: itemGroupSize, stats: itemStats } =
+    rankAndScore(submittedIds, responses);
+  for (const question of questions) {
+    question.discrimination = itemStats.get(question.id)?.discrimination ?? null;
+  }
+
   return {
     session: {
       id: session.id,
@@ -668,6 +738,9 @@ export async function getLiveBoard(sql, dashboardToken) {
     questions,
     students,
     totalPoints,
+    // How many completed papers the discrimination column is based on, so
+    // the board can say so rather than showing bare numbers with no context.
+    itemAnalysis: { students: itemStudents, groupSize: itemGroupSize },
     summary: {
       joined: students.filter((s) => s.status !== "not_started").length,
       submitted: students.filter((s) => s.status === "submitted").length,
@@ -780,39 +853,13 @@ export async function getItemAnalysis(sql, dashboardToken) {
     attempts.map((a) => a.id)
   );
 
-  // Rank attempts by total score to find the top and bottom ~27%. With this
-  // few data points per class, rounding matters: floor(n/2) keeps the two
-  // groups from overlapping when n is small, and a lone student (n=1) gets
-  // no group at all -- there is nothing to compare them against.
-  const totalByAttempt = new Map(attempts.map((a) => [a.id, 0]));
-  for (const r of responses) {
-    totalByAttempt.set(r.attempt_id, (totalByAttempt.get(r.attempt_id) ?? 0) + (r.points_earned ?? 0));
-  }
-  const ranked = [...totalByAttempt.entries()].sort((a, b) => b[1] - a[1]);
-  const n = ranked.length;
-  const groupSize = n >= 2 ? Math.max(1, Math.min(Math.floor(n / 2), Math.round(n * 0.27))) : 0;
-  const topIds = new Set(ranked.slice(0, groupSize).map(([id]) => id));
-  const bottomIds = new Set(ranked.slice(n - groupSize, n).map(([id]) => id));
-
-  const responsesByQuestion = new Map(questions.map((q) => [q.id, []]));
-  for (const r of responses) responsesByQuestion.get(r.question_id)?.push(r);
+  const { n, groupSize, topIds, bottomIds, byQuestion, stats } =
+    rankAndScore(attempts.map((a) => a.id), responses);
 
   const reportedQuestions = questions.map((question) => {
-    const rs = responsesByQuestion.get(question.id) ?? [];
+    const rs = byQuestion.get(question.id) ?? [];
     const answered = rs.length;
-    const correct = rs.filter((r) => r.is_correct).length;
-    const difficulty = answered ? Math.round((correct / answered) * 100) / 100 : null;
-
-    let discrimination = null;
-    if (groupSize >= 1) {
-      const topRs = rs.filter((r) => topIds.has(r.attempt_id));
-      const bottomRs = rs.filter((r) => bottomIds.has(r.attempt_id));
-      if (topRs.length && bottomRs.length) {
-        const topP = topRs.filter((r) => r.is_correct).length / topRs.length;
-        const bottomP = bottomRs.filter((r) => r.is_correct).length / bottomRs.length;
-        discrimination = Math.round((topP - bottomP) * 100) / 100;
-      }
-    }
+    const { difficulty = null, discrimination = null } = stats.get(question.id) ?? {};
 
     const counts = new Map(question.choiceMeta.map((c) => [c.id, { count: 0, topCount: 0, bottomCount: 0 }]));
     for (const r of rs) {
@@ -841,7 +888,7 @@ export async function getItemAnalysis(sql, dashboardToken) {
     };
   });
 
-  return { ...base, groupSize, questions: reportedQuestions };
+  return { ...base, students: n, groupSize, questions: reportedQuestions };
 }
 
 const SEVERITY = { critical: 3, warning: 2, good: 1, info: 0 };

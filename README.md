@@ -106,6 +106,24 @@ bad one, and compare how each group did on every question.
     real warning sign -- it can mean the "wrong" answer has a defensible
     reading, or that the key is wrong.
 
+**Discrimination is also on the live board itself**, as a row underneath
+Class Total -- one number per question, no click required:
+
+```
+Student                 Correct   1    2    3    4    5
+6  Class Total                   67%  33%  67%  67%  67%
+   Discrimination         top/bottom 1 of 3
+                          +1.00 +1.00 +1.00 +1.00 +1.00
+```
+
+It is the exact same number as the full report -- both are computed by one
+shared function, so the two screens cannot quietly disagree. It stays "--"
+until at least two students have completed the test, since discrimination
+needs a top and a bottom group to compare. A negative value turns red: the
+one signal worth catching without opening the report at all. Difficulty and
+the distractor breakdown are still report-only, since a 25-column strip has
+no room for either.
+
 Reached by the same dashboard link as the live board -- there's nothing in
 a report that isn't already in that grid, so it needs no separate secret.
 Scoped to one **administration**, not a quiz: the same quiz launched locked
@@ -337,7 +355,7 @@ npm run dev      # in one terminal
 npm test         # in another
 ```
 
-91 checks covering both delivery modes, the launch console and the board, including the ones that
+94 checks covering both delivery modes, the launch console and the board, including the ones that
 would be expensive to get wrong: that a dead device resumes in the right
 place, that going back and skipping ahead are refused by the server in
 sequential mode, that an open test cannot be handed in with blanks, that

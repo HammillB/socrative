@@ -101,6 +101,12 @@
              padding: 9px 6px; text-align: center; font-variant-numeric: tabular-nums; }
   tfoot td.name { text-align: left; }
   tfoot td.low { color: var(--wrong); }
+  tfoot tr.discrimination td { position: static; font-weight: 600; font-size: 13px;
+                                color: var(--muted); border-top: 1px solid var(--line-soft); }
+  tfoot tr.discrimination td.name { font-weight: 700; color: var(--ink); cursor: help; }
+  tfoot tr.discrimination td.name small { display: block; font-weight: 400;
+                                           font-size: 11px; color: var(--muted); }
+  tfoot tr.discrimination td.bad { color: var(--wrong); }
 
   .legend { margin-top: 14px; color: var(--muted); font-size: 13px;
             display: flex; gap: 20px; flex-wrap: wrap; align-items: center; }
@@ -143,6 +149,7 @@
     <span><span class="swatch" style="background:var(--right-bg)"></span>correct</span>
     <span><span class="swatch" style="background:var(--wrong-bg)"></span>incorrect</span>
     <span><span class="swatch" style="background:var(--warn-bg)"></span>class below 40% on this question</span>
+    <span><span class="swatch" style="background:var(--wrong)"></span>negative discrimination -- check the answer key</span>
     <span id="stamp"></span>
   </div>
   <p class="empty" id="empty" hidden>Waiting for students to join.</p>
@@ -325,6 +332,41 @@ ${student.percentOfTest}% of the whole test so far`;
       td.textContent = question.percent === null ? "—" : question.percent + "%";
       if (question.struggling) td.className = "low";
       td.title = `Q${question.position + 1}: ${question.correct} of ${question.answered} correct`;
+    }
+
+    // Discrimination, underneath Class Total: the item-analysis number for
+    // every question, right here rather than only on the separate report.
+    // Unlike Class Total above it (which is LIVE -- everyone who has
+    // answered so far), this is based only on COMPLETED papers, so it stays
+    // "--" until enough students have actually finished.
+    const drow = tfoot.insertRow();
+    drow.className = "discrimination";
+    const dlabel = document.createElement("td");
+    dlabel.className = "name";
+    dlabel.textContent = "Discrimination";
+    const { students: itemN, groupSize } = board.itemAnalysis;
+    dlabel.title = groupSize
+      ? `Comparing the top ${groupSize} against the bottom ${groupSize} of ${itemN} completed papers.`
+      : `Needs at least 2 completed papers to compare a top and bottom group ` +
+        `(${itemN} so far).`;
+    const small = document.createElement("small");
+    small.textContent = groupSize ? `top/bottom ${groupSize} of ${itemN}` : `${itemN} completed`;
+    dlabel.append(small);
+    drow.append(dlabel);
+    drow.insertCell();   // lines up under the Score column, deliberately blank
+
+    for (const question of board.questions) {
+      const td = drow.insertCell();
+      const d = question.discrimination;
+      td.textContent = d === null ? "—" : (d > 0 ? "+" : "") + d.toFixed(2);
+      if (d !== null && d < 0) td.className = "bad";
+      td.title = d === null
+        ? `Q${question.position + 1}: not enough completed papers yet`
+        : `Q${question.position + 1}: discrimination ${d.toFixed(2)}` +
+          (d < 0 ? " -- students who scored well overall did WORSE on this one; check the key"
+                 : d < 0.20 ? " -- weak: strong and weak students did about equally well"
+                 : d >= 0.40 ? " -- strong: this question separates strong students from weak ones"
+                 : "");
     }
   }
 
