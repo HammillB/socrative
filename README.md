@@ -348,6 +348,22 @@ worse than no toggle.
 pulls two small pure-JavaScript packages and there is nothing to rebuild when
 Node updates.
 
+## Trying it with a realistic class
+
+```bash
+node scripts/demo-class.js
+```
+
+Fills whichever rooms are currently open (`INTSCIA3` and `INTSCIA4` by
+default) with a class that looks like a real one instead of an empty grid or
+a contrived edge case: two students finished with a solid score, one
+finished but struggled, two still mid-test at different points, one who has
+not shown up. Accuracy is randomised per question rather than scripted, so
+the live board's Discrimination row and the Item Analysis report see the
+kind of variation a real class produces -- including, some runs, a genuinely
+negative discrimination worth looking at. Safe to re-run: it clears only the
+attempts it is about to recreate.
+
 ## Tests
 
 ```bash
