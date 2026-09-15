@@ -85,7 +85,7 @@ Your rooms
   [ New room name...              ] [Add room]
 
 INTSCIA3  6 students
-  [ Import a roster (.csv) ]
+  [ Import a roster (.csv) ]  [ Download template ]
   Student number [___] First name [___] Last name [___] [Add]
 
   100001   Aurora     Bell        [Remove]
@@ -96,9 +96,12 @@ INTSCIA3  6 students
 Click a room name to manage its roster below. Every cell in the roster
 table edits in place -- click it, type, click away or press Enter -- and
 **Import a roster (.csv)** reads the same column names Socrative's own
-roster export uses (`First Name`, `Last Name`, `Student ID`), sharing one
+roster export uses (`Last name`, `First name`, `Student ID`), sharing one
 parser with the command-line importer rather than a second copy that could
-quietly drift from it.
+quietly drift from it. **Download template** hands back a blank CSV with
+just that header row, so a roster typed up in Excel starts out in a shape
+the importer already understands rather than needing to be reverse-engineered
+from an example.
 
 **Removing a student from a room only removes that enrollment.** The
 student record, and their place in any other room, is untouched -- the same
@@ -373,6 +376,7 @@ web/live.html       the teacher's live results board
 web/report.html     item analysis for one test administration
 web/launch.html     the teacher's launch screen
 web/rooms.html      manage rooms and rosters
+web/roster_template.csv  the blank roster the Rooms screen offers to download
 web/library.html    build and import quizzes
 web/nav.js          the top nav bar shared by every teacher-facing page
 ```
