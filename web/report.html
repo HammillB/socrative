@@ -128,7 +128,7 @@
         ranked by total score and split into a top and bottom group; <b>difficulty</b>
         is how many got a question right, <b>discrimination</b> is how much better the
         top group did on it than the bottom group. Based only on
-        <b>completed</b> papers.
+        <b>completed</b> tests.
       </p>
       <div class="order" id="order" role="group" aria-label="Order questions by">
         <button data-order="flagged" class="on" type="button">Flagged first</button>
@@ -254,7 +254,7 @@
   function render() {
     $("title").textContent = `Item Analysis — ${report.session.title}`;
     $("subtitle").textContent =
-      `Room ${report.session.room ?? "—"} · ${report.students} paper` +
+      `Room ${report.session.room ?? "—"} · ${report.students} student` +
       `${report.students === 1 ? "" : "s"} completed` +
       (report.groupSize
         ? ` · comparing the top ${report.groupSize} against the bottom ${report.groupSize}`
@@ -269,7 +269,7 @@
     const stats = [
       [report.questions.length, "questions"],
       [flaggedCount, flaggedCount === 1 ? "flagged for review" : "flagged for review"],
-      [report.students, report.students === 1 ? "paper completed" : "papers completed"],
+      [report.students, report.students === 1 ? "student completed" : "students completed"],
     ];
     for (const [n, label] of stats) {
       const stat = document.createElement("div");

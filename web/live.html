@@ -344,8 +344,8 @@ ${student.percentOfTest}% of the whole test so far`;
     // Discrimination, underneath Class Total: the item-analysis number for
     // every question, right here rather than only on the separate report.
     // Unlike Class Total above it (which is LIVE -- everyone who has
-    // answered so far), this is based only on COMPLETED papers, so it stays
-    // "--" until enough students have actually finished.
+    // answered so far), this is based only on students who have COMPLETED
+    // the test, so it stays "--" until enough of them actually finish.
     const drow = tfoot.insertRow();
     drow.className = "discrimination";
     const dlabel = document.createElement("td");
@@ -353,8 +353,8 @@ ${student.percentOfTest}% of the whole test so far`;
     dlabel.textContent = "Discrimination";
     const { students: itemN, groupSize } = board.itemAnalysis;
     dlabel.title = groupSize
-      ? `Comparing the top ${groupSize} against the bottom ${groupSize} of ${itemN} completed papers.`
-      : `Needs at least 2 completed papers to compare a top and bottom group ` +
+      ? `Comparing the top ${groupSize} against the bottom ${groupSize} of ${itemN} students who completed the test.`
+      : `Needs at least 2 students to complete the test to compare a top and bottom group ` +
         `(${itemN} so far).`;
     const small = document.createElement("small");
     small.textContent = groupSize ? `top/bottom ${groupSize} of ${itemN}` : `${itemN} completed`;
@@ -368,7 +368,7 @@ ${student.percentOfTest}% of the whole test so far`;
       td.textContent = d === null ? "—" : (d > 0 ? "+" : "") + d.toFixed(2);
       if (d !== null && d < 0) td.className = "bad";
       td.title = d === null
-        ? `Q${question.position + 1}: not enough completed papers yet`
+        ? `Q${question.position + 1}: not enough students have completed the test yet`
         : `Q${question.position + 1}: discrimination ${d.toFixed(2)}` +
           (d < 0 ? " -- students who scored well overall did WORSE on this one; check the key"
                  : d < 0.20 ? " -- weak: strong and weak students did about equally well"

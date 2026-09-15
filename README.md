@@ -157,7 +157,7 @@ project exists rather than staying on Socrative. Open the live board and
 click **Item Analysis**, or follow the Report link from a past test.
 
 ```
-25 questions · 0 flagged for review · 3 papers completed
+25 questions · 0 flagged for review · 3 students completed
 
  3  Absolute zero happens when                    Difficulty 33%  Discrimination +1.00
     A  all particles stop moving        Correct     1   33%   top 1   bottom 0
